@@ -1,6 +1,6 @@
 {
   "result": "PASS",
-  "checks": 22,
+  "checks": 29,
   "scope": "Node.js offline synthetic-wire and mocked Egern API checks only. No Egern/iOS runtime, live Google response, Apple product availability, price or entitlement verification.",
   "checks_passed": [
     "golden wire bytes: 16-byte SKU becomes 25 bytes",
@@ -24,6 +24,13 @@
     "no-match response stays byte identical",
     "field-count and nesting limits fail open in Egern",
     "body-size limit returns original bytes",
-    "disabled notifications do not affect processing"
+    "disabled notifications do not affect processing",
+    "no-match inspection reports a different product candidate without changing bytes",
+    "raw target inside composite text is distinguished from a complete field match",
+    "diagnostics distinguish path filtering from absence of the target",
+    "diagnostics from a malformed nested parse are discarded",
+    "candidate diagnostics are bounded and exclude arbitrary account or auth strings",
+    "empty protobuf inspection reports zero bytes and zero parsed fields",
+    "gRPC candidate diagnostics merge across frames without changing inspection bytes"
   ]
 }

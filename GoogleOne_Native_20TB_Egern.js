@@ -1,6 +1,7 @@
 // Egern native script API: https://egernapp.com/zh-CN/docs/javascript-api/
 // Experimental, schema-free protobuf inspection. No live Google/Apple validation.
-// No account data, response bodies, cookies or receipts are persisted or uploaded.
+// Diagnostics persist bounded product-code candidates and counters locally.
+// No account data, complete response bodies, cookies or receipts are uploaded.
 const HOST = 'subscriptionsmobile-pa.googleapis.com';
 const OLD_SKU = 'g1.ios.20tb.m.v2';
 const NEW_SKU = 'com.google.one.20tb.m.iog';
@@ -8,6 +9,8 @@ const MAX_BODY = 2 * 1024 * 1024;
 const MAX_FIELDS = 50000;
 const MAX_DEPTH = 48;
 const STORAGE_KEY = 'google-one-native-20tb:last';
+const DIAGNOSTIC_VERSION = 2;
+const MAX_CANDIDATES = 8;
 
 class Malformed extends Error {}
 class LimitExceeded extends Error {}
@@ -20,6 +23,38 @@ const NEW_BYTES = ascii(NEW_SKU);
 
 function equal(a, b) {
   return a.length === b.length && a.every((v, i) => v === b[i]);
+}
+
+function productCandidate(payload) {
+  if (payload.length < 8 || payload.length > 160) return null;
+  let value = '';
+  for (const byte of payload) {
+    if (!((byte >= 48 && byte <= 57) || (byte >= 65 && byte <= 90) ||
+      (byte >= 97 && byte <= 122) || byte === 45 || byte === 46 || byte === 95)) return null;
+    value += String.fromCharCode(byte);
+  }
+  return /^(?:g\d+\.ios\.|com\.google\.one\.)/.test(value) ? value : null;
+}
+
+function emptyDiagnostics() {
+  return { parsed_fields: 0, target_fields: 0, candidate_skus: [] };
+}
+
+function mergeDiagnostics(into, from) {
+  into.parsed_fields += from.parsed_fields;
+  into.target_fields += from.target_fields;
+  into.candidate_skus.push(...from.candidate_skus.slice(0, MAX_CANDIDATES - into.candidate_skus.length));
+}
+
+function rawTargetOccurrences(data) {
+  let count = 0;
+  for (let i = 0; i + OLD_BYTES.length <= data.length; i++) {
+    if (data[i] === OLD_BYTES[0] && equal(data.subarray(i, i + OLD_BYTES.length), OLD_BYTES)) {
+      count++;
+      i += OLD_BYTES.length - 1;
+    }
+  }
+  return count;
 }
 
 function concat(parts) {
@@ -70,9 +105,11 @@ function message(data, depth, path, state) {
   if (depth > MAX_DEPTH) throw new LimitExceeded('nesting limit');
   const parts = [];
   const hits = [];
+  const diagnostics = emptyDiagnostics();
   let offset = 0;
   while (offset < data.length) {
     if (++state.fields > MAX_FIELDS) throw new LimitExceeded('field limit');
+    diagnostics.parsed_fields++;
     const start = offset;
     const tag = readU32(data, offset, data.length);
     offset = tag.offset;
@@ -89,9 +126,14 @@ function message(data, depth, path, state) {
       const payloadEnd = payloadStart + size.value;
       if (payloadEnd > data.length) throw new Malformed('truncated length-delimited field');
       const payload = data.subarray(payloadStart, payloadEnd);
+      const candidate = productCandidate(payload);
+      if (candidate && diagnostics.candidate_skus.length < MAX_CANDIDATES) {
+        diagnostics.candidate_skus.push({ path: fieldPath.join('.'), value: candidate });
+      }
       let next = payload;
       let nestedHits = [];
       if (equal(payload, OLD_BYTES)) {
+        diagnostics.target_fields++;
         const dotted = fieldPath.join('.');
         if (!state.paths || state.paths.has(dotted)) {
           next = NEW_BYTES;
@@ -100,6 +142,7 @@ function message(data, depth, path, state) {
       } else if (payload.length) {
         try {
           const nested = message(payload, depth + 1, fieldPath, state);
+          mergeDiagnostics(diagnostics, nested.diagnostics);
           next = nested.bytes;
           nestedHits = nested.hits;
         } catch (error) {
@@ -122,7 +165,7 @@ function message(data, depth, path, state) {
     if (offset > data.length) throw new Malformed('truncated fixed-width field');
     parts.push(data.subarray(start, offset));
   }
-  return { bytes: hits.length ? concat(parts) : data, hits };
+  return { bytes: hits.length ? concat(parts) : data, hits, diagnostics };
 }
 
 // Exported only for reproducible offline verification; no external dependencies.
@@ -141,6 +184,7 @@ export function patchPayload(data, contentType, allowedPaths = null) {
   }
   const parts = [];
   const hits = [];
+  const diagnostics = emptyDiagnostics();
   let offset = 0;
   while (offset < data.length) {
     if (offset + 5 > data.length) throw new Malformed('truncated grpc header');
@@ -153,6 +197,7 @@ export function patchPayload(data, contentType, allowedPaths = null) {
     } else {
       if (flag !== 0) throw new Malformed('compressed or unknown grpc frame');
       const changed = patchProtobuf(data.subarray(offset + 5, end), allowedPaths);
+      mergeDiagnostics(diagnostics, changed.diagnostics);
       if (changed.hits.length) {
         const header = new Uint8Array(5);
         new DataView(header.buffer).setUint32(1, changed.bytes.length, false);
@@ -164,7 +209,7 @@ export function patchPayload(data, contentType, allowedPaths = null) {
     }
     offset = end;
   }
-  return { bytes: hits.length ? concat(parts) : data, hits };
+  return { bytes: hits.length ? concat(parts) : data, hits, diagnostics };
 }
 
 export function isTarget(request) {
@@ -180,22 +225,28 @@ export function isTarget(request) {
 }
 
 function report(ctx, record) {
-  // Store only counters and field-number paths, never network payloads or headers.
-  const summary = { mode: record.mode, status: record.status, matches: record.matches || 0,
+  // Only bounded, prefix-filtered product candidates are retained, without headers or payloads.
+  const summary = { diagnostic_version: DIAGNOSTIC_VERSION,
+    mode: record.mode, status: record.status, matches: record.matches || 0,
     paths: [...new Set(record.paths || [])].slice(0, 12) };
+  if (record.diagnostics) summary.diagnostics = record.diagnostics;
   const fingerprint = JSON.stringify(summary);
   let previous = null;
   try {
     previous = ctx.storage.getJSON(STORAGE_KEY);
     ctx.storage.setJSON(STORAGE_KEY, { ...summary, time: new Date().toISOString() });
   } catch {}
-  const oldFingerprint = previous ? JSON.stringify({ mode: previous.mode, status: previous.status,
-    matches: previous.matches, paths: previous.paths }) : null;
+  const { time: previousTime, ...previousSummary } = previous || {};
+  const oldFingerprint = previous ? JSON.stringify(previousSummary) : null;
   if (String(ctx.env?.NOTIFY ?? 'true') === 'true' && fingerprint !== oldFingerprint) {
     try {
-      ctx.notify({ title: 'Google One 原生接口',
+      const detail = summary.diagnostics;
+      const candidates = detail?.candidate_skus.slice(0, 3).map(item => `${item.value} [${item.path}]`).join(', ');
+      ctx.notify({ title: 'Google One 原生接口 · 诊断2',
         body: `${summary.mode}: ${summary.status}; 匹配 ${summary.matches} 处` +
-          (summary.paths.length ? `; 路径 ${summary.paths.join(', ')}` : ''), sound: false });
+          (summary.paths.length ? `; 路径 ${summary.paths.join(', ')}` : '') +
+          (detail ? `; 正文 ${detail.body_bytes} 字节; 目标原文 ${detail.raw_target_occurrences} 处; 候选 ${candidates || '未识别'}` : ''),
+        sound: false });
     } catch {}
   }
 }
@@ -232,7 +283,9 @@ export default async function(ctx) {
     const result = patchPayload(original, contentType, paths);
     const changed = mode === 'rewrite' && result.hits.length > 0;
     report(ctx, { mode, status: changed ? 'rewritten' : result.hits.length ? 'candidate_found' : 'no_match',
-      matches: result.hits.length, paths: result.hits });
+      matches: result.hits.length, paths: result.hits,
+      diagnostics: { body_bytes: original.length, raw_target_occurrences: rawTargetOccurrences(original),
+        ...result.diagnostics } });
     if (!changed) return { body: original };
     const headers = ctx.response.headers;
     for (const name of ['content-length', 'etag', 'content-md5', 'digest', 'content-digest']) headers.delete(name);

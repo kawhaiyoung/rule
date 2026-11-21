@@ -165,9 +165,69 @@ check('disabled notifications do not affect processing', async () => {
   await run(c.ctx); assert.equal(c.notes.length, 0); assert.equal(c.last().matches, 1);
 });
 
+check('no-match inspection reports a different product candidate without changing bytes', async () => {
+  const sku = Buffer.from('g1.ios.30tb.ai.pro.m');
+  const body = Buffer.concat([Buffer.from([10, sku.length]), sku]);
+  const c = context(body); const out = await run(c.ctx);
+  assert.deepEqual(Buffer.from(out.body), body);
+  assert.equal(c.last().status, 'no_match');
+  assert.equal(c.last().diagnostics.raw_target_occurrences, 0);
+  assert.deepEqual(c.last().diagnostics.candidate_skus, [{ path: '1', value: sku.toString() }]);
+  assert.match(c.notes[0].title, /诊断2/);
+  assert.ok(c.notes[0].body.includes(sku.toString()));
+});
+check('raw target inside composite text is distinguished from a complete field match', async () => {
+  const text = Buffer.from('prefix.' + OLD + '.suffix');
+  const body = Buffer.concat([Buffer.from([10, text.length]), text]);
+  const c = context(body); await run(c.ctx);
+  assert.equal(c.last().status, 'no_match');
+  assert.equal(c.last().diagnostics.raw_target_occurrences, 1);
+  assert.equal(c.last().diagnostics.target_fields, 0);
+  assert.deepEqual(c.last().diagnostics.candidate_skus, []);
+});
+check('diagnostics distinguish path filtering from absence of the target', async () => {
+  const c = context(oldLeaf, { env: { FIELD_PATHS: '2.1' } }); await run(c.ctx);
+  assert.equal(c.last().status, 'no_match');
+  assert.equal(c.last().diagnostics.target_fields, 1);
+  assert.equal(c.last().diagnostics.raw_target_occurrences, 1);
+});
+check('diagnostics from a malformed nested parse are discarded', async () => {
+  const nested = Buffer.concat([oldLeaf, Buffer.from([0])]);
+  const body = Buffer.concat([Buffer.from([10, nested.length]), nested]);
+  const c = context(body); await run(c.ctx);
+  assert.equal(c.last().status, 'no_match');
+  assert.equal(c.last().diagnostics.raw_target_occurrences, 1);
+  assert.equal(c.last().diagnostics.target_fields, 0);
+  assert.deepEqual(c.last().diagnostics.candidate_skus, []);
+});
+check('candidate diagnostics are bounded and exclude arbitrary account or auth strings', async () => {
+  const values = ['synthetic-account@example.invalid', 'Bearer synthetic-secret', ...Array.from({ length: 12 }, (_, i) => `g1.ios.${i + 1}tb.m`)];
+  const body = Buffer.concat(values.map(value => {
+    const bytes = Buffer.from(value); return Buffer.concat([Buffer.from([10, bytes.length]), bytes]);
+  }));
+  const c = context(body); await run(c.ctx);
+  assert.equal(c.last().diagnostics.candidate_skus.length, 8);
+  assert.ok(!JSON.stringify(c.last()).includes('synthetic-secret'));
+  assert.ok(!JSON.stringify(c.last()).includes('@example.invalid'));
+});
+check('empty protobuf inspection reports zero bytes and zero parsed fields', async () => {
+  const c = context(Buffer.alloc(0)); await run(c.ctx);
+  assert.equal(c.last().status, 'no_match');
+  assert.equal(c.last().diagnostics.body_bytes, 0);
+  assert.equal(c.last().diagnostics.parsed_fields, 0);
+});
+check('gRPC candidate diagnostics merge across frames without changing inspection bytes', async () => {
+  const body = Buffer.concat([grpc(oldLeaf), grpc(oldLeaf)]);
+  const c = context(body, { type: 'application/grpc+proto' }); const out = await run(c.ctx);
+  assert.deepEqual(Buffer.from(out.body), body);
+  assert.equal(c.last().diagnostics.raw_target_occurrences, 2);
+  assert.equal(c.last().diagnostics.target_fields, 2);
+  assert.equal(c.last().diagnostics.candidate_skus.length, 2);
+});
+
 after(async () => {
   await writeFile(new URL('./GoogleOne_Egern_validation.json', import.meta.url), JSON.stringify({
-    result: passed.length === 22 ? 'PASS' : 'INCOMPLETE', checks: passed.length,
+    result: passed.length === 29 ? 'PASS' : 'INCOMPLETE', checks: passed.length,
     scope: 'Node.js offline synthetic-wire and mocked Egern API checks only. No Egern/iOS runtime, live Google response, Apple product availability, price or entitlement verification.',
     checks_passed: passed,
   }, null, 2) + '\n');
