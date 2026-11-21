@@ -1,6 +1,6 @@
 {
   "result": "PASS",
-  "checks": 29,
+  "checks": 32,
   "scope": "Node.js offline synthetic-wire and mocked Egern API checks only. No Egern/iOS runtime, live Google response, Apple product availability, price or entitlement verification.",
   "checks_passed": [
     "golden wire bytes: 16-byte SKU becomes 25 bytes",
@@ -31,6 +31,9 @@
     "diagnostics from a malformed nested parse are discarded",
     "candidate diagnostics are bounded and exclude arbitrary account or auth strings",
     "empty protobuf inspection reports zero bytes and zero parsed fields",
-    "gRPC candidate diagnostics merge across frames without changing inspection bytes"
+    "gRPC candidate diagnostics merge across frames without changing inspection bytes",
+    "duplicate early candidates cannot hide a later Ultra-like candidate",
+    "clipboard report includes all retained unique candidates beyond the preview",
+    "nested candidate deduplication preserves first path and counts every occurrence"
   ]
 }

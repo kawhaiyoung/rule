@@ -173,7 +173,7 @@ check('no-match inspection reports a different product candidate without changin
   assert.equal(c.last().status, 'no_match');
   assert.equal(c.last().diagnostics.raw_target_occurrences, 0);
   assert.deepEqual(c.last().diagnostics.candidate_skus, [{ path: '1', value: sku.toString() }]);
-  assert.match(c.notes[0].title, /诊断2/);
+  assert.match(c.notes[0].title, /诊断3/);
   assert.ok(c.notes[0].body.includes(sku.toString()));
 });
 check('raw target inside composite text is distinguished from a complete field match', async () => {
@@ -201,12 +201,14 @@ check('diagnostics from a malformed nested parse are discarded', async () => {
   assert.deepEqual(c.last().diagnostics.candidate_skus, []);
 });
 check('candidate diagnostics are bounded and exclude arbitrary account or auth strings', async () => {
-  const values = ['synthetic-account@example.invalid', 'Bearer synthetic-secret', ...Array.from({ length: 12 }, (_, i) => `g1.ios.${i + 1}tb.m`)];
+  const values = ['synthetic-account@example.invalid', 'Bearer synthetic-secret', ...Array.from({ length: 75 }, (_, i) => `g1.ios.${i + 1}tb.m`)];
   const body = Buffer.concat(values.map(value => {
     const bytes = Buffer.from(value); return Buffer.concat([Buffer.from([10, bytes.length]), bytes]);
   }));
   const c = context(body); await run(c.ctx);
-  assert.equal(c.last().diagnostics.candidate_skus.length, 8);
+  assert.equal(c.last().diagnostics.candidate_skus.length, 64);
+  assert.equal(c.last().diagnostics.candidate_fields, 75);
+  assert.equal(c.last().diagnostics.candidates_truncated, true);
   assert.ok(!JSON.stringify(c.last()).includes('synthetic-secret'));
   assert.ok(!JSON.stringify(c.last()).includes('@example.invalid'));
 });
@@ -222,12 +224,44 @@ check('gRPC candidate diagnostics merge across frames without changing inspectio
   assert.deepEqual(Buffer.from(out.body), body);
   assert.equal(c.last().diagnostics.raw_target_occurrences, 2);
   assert.equal(c.last().diagnostics.target_fields, 2);
-  assert.equal(c.last().diagnostics.candidate_skus.length, 2);
+  assert.equal(c.last().diagnostics.candidate_skus.length, 1);
+  assert.equal(c.last().diagnostics.candidate_fields, 2);
+});
+
+check('duplicate early candidates cannot hide a later Ultra-like candidate', async () => {
+  const values = [...Array(12).fill('g1.ios.30gb.m'), 'com.google.one.generic', 'g1.ios.30tb.ai.pro.m'];
+  const body = Buffer.concat(values.map(value => {
+    const bytes = Buffer.from(value); return Buffer.concat([Buffer.from([10, bytes.length]), bytes]);
+  }));
+  const c = context(body); const out = await run(c.ctx);
+  assert.deepEqual(Buffer.from(out.body), body);
+  assert.deepEqual(c.last().diagnostics.candidate_skus.map(item => item.value),
+    ['g1.ios.30gb.m', 'com.google.one.generic', 'g1.ios.30tb.ai.pro.m']);
+  assert.equal(c.last().diagnostics.candidates_truncated, false);
+  assert.ok(c.notes[0].body.includes('g1.ios.30tb.ai.pro.m'));
+});
+check('clipboard report includes all retained unique candidates beyond the preview', async () => {
+  const values = Array.from({ length: 12 }, (_, i) => `g1.ios.${i + 1}tb.m`);
+  const body = Buffer.concat(values.map(value => {
+    const bytes = Buffer.from(value); return Buffer.concat([Buffer.from([10, bytes.length]), bytes]);
+  }));
+  const c = context(body); await run(c.ctx);
+  assert.equal(c.notes[0].action.type, 'clipboard');
+  assert.ok(!c.notes[0].body.includes('g1.ios.12tb.m'));
+  assert.ok(c.notes[0].action.text.includes('g1.ios.12tb.m'));
+  assert.ok(c.notes[0].action.text.includes('收录截断 否'));
+});
+check('nested candidate deduplication preserves first path and counts every occurrence', async () => {
+  const nested = Buffer.concat([oldLeaf, Buffer.from([0x12, 0x12]), oldLeaf]);
+  const out = patchProtobuf(nested);
+  assert.equal(out.diagnostics.candidate_fields, 2);
+  assert.deepEqual(out.diagnostics.candidate_skus, [{ path: '1', value: OLD.toString() }]);
+  assert.deepEqual(out.hits, ['1', '2.1']);
 });
 
 after(async () => {
   await writeFile(new URL('./GoogleOne_Egern_validation.json', import.meta.url), JSON.stringify({
-    result: passed.length === 29 ? 'PASS' : 'INCOMPLETE', checks: passed.length,
+    result: passed.length === 32 ? 'PASS' : 'INCOMPLETE', checks: passed.length,
     scope: 'Node.js offline synthetic-wire and mocked Egern API checks only. No Egern/iOS runtime, live Google response, Apple product availability, price or entitlement verification.',
     checks_passed: passed,
   }, null, 2) + '\n');

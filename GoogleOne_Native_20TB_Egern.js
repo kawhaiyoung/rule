@@ -9,8 +9,8 @@ const MAX_BODY = 2 * 1024 * 1024;
 const MAX_FIELDS = 50000;
 const MAX_DEPTH = 48;
 const STORAGE_KEY = 'google-one-native-20tb:last';
-const DIAGNOSTIC_VERSION = 2;
-const MAX_CANDIDATES = 8;
+const DIAGNOSTIC_VERSION = 3;
+const MAX_CANDIDATES = 64;
 
 class Malformed extends Error {}
 class LimitExceeded extends Error {}
@@ -37,13 +37,22 @@ function productCandidate(payload) {
 }
 
 function emptyDiagnostics() {
-  return { parsed_fields: 0, target_fields: 0, candidate_skus: [] };
+  return { parsed_fields: 0, target_fields: 0, candidate_fields: 0,
+    candidate_skus: [], candidates_truncated: false };
+}
+
+function rememberCandidate(diagnostics, candidate) {
+  if (diagnostics.candidate_skus.some(item => item.value === candidate.value)) return;
+  if (diagnostics.candidate_skus.length < MAX_CANDIDATES) diagnostics.candidate_skus.push(candidate);
+  else diagnostics.candidates_truncated = true;
 }
 
 function mergeDiagnostics(into, from) {
   into.parsed_fields += from.parsed_fields;
   into.target_fields += from.target_fields;
-  into.candidate_skus.push(...from.candidate_skus.slice(0, MAX_CANDIDATES - into.candidate_skus.length));
+  into.candidate_fields += from.candidate_fields;
+  into.candidates_truncated ||= from.candidates_truncated;
+  for (const candidate of from.candidate_skus) rememberCandidate(into, candidate);
 }
 
 function rawTargetOccurrences(data) {
@@ -127,8 +136,9 @@ function message(data, depth, path, state) {
       if (payloadEnd > data.length) throw new Malformed('truncated length-delimited field');
       const payload = data.subarray(payloadStart, payloadEnd);
       const candidate = productCandidate(payload);
-      if (candidate && diagnostics.candidate_skus.length < MAX_CANDIDATES) {
-        diagnostics.candidate_skus.push({ path: fieldPath.join('.'), value: candidate });
+      if (candidate) {
+        diagnostics.candidate_fields++;
+        rememberCandidate(diagnostics, { path: fieldPath.join('.'), value: candidate });
       }
       let next = payload;
       let nestedHits = [];
@@ -241,12 +251,24 @@ function report(ctx, record) {
   if (String(ctx.env?.NOTIFY ?? 'true') === 'true' && fingerprint !== oldFingerprint) {
     try {
       const detail = summary.diagnostics;
-      const candidates = detail?.candidate_skus.slice(0, 3).map(item => `${item.value} [${item.path}]`).join(', ');
-      ctx.notify({ title: 'Google One 原生接口 · 诊断2',
+      const candidates = detail?.candidate_skus.slice(0, 8).map(item => item.value).join(', ');
+      const reportText = [
+        'Google One 原生接口 · 诊断3',
+        `模式 ${summary.mode}; 状态 ${summary.status}; 匹配 ${summary.matches} 处`,
+        ...(detail ? [
+          `正文 ${detail.body_bytes} 字节; 目标原文 ${detail.raw_target_occurrences} 处`,
+          `候选字段 ${detail.candidate_fields} 处; 已收录 ${detail.candidate_skus.length} 个不同编号; 收录截断 ${detail.candidates_truncated ? '是' : '否'}`,
+          '候选商品字符串（未经商品语义或可售性验证）：',
+          ...detail.candidate_skus.map(item => item.value),
+        ] : []),
+      ].join('\n');
+      ctx.notify({ title: 'Google One 原生接口 · 诊断3',
         body: `${summary.mode}: ${summary.status}; 匹配 ${summary.matches} 处` +
           (summary.paths.length ? `; 路径 ${summary.paths.join(', ')}` : '') +
-          (detail ? `; 正文 ${detail.body_bytes} 字节; 目标原文 ${detail.raw_target_occurrences} 处; 候选 ${candidates || '未识别'}` : ''),
-        sound: false });
+          (detail ? `; 正文 ${detail.body_bytes} 字节; 目标原文 ${detail.raw_target_occurrences} 处; 去重候选 ${candidates || '未识别'}; ` +
+            `预览 ${Math.min(detail.candidate_skus.length, 8)}/${detail.candidate_skus.length}; 收录截断 ${detail.candidates_truncated ? '是' : '否'}` : '') +
+          '; 点击复制报告',
+        sound: false, action: { type: 'clipboard', text: reportText } });
     } catch {}
   }
 }
