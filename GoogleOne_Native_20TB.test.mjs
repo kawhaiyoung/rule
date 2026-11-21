@@ -259,9 +259,43 @@ check('nested candidate deduplication preserves first path and counts every occu
   assert.deepEqual(out.hits, ['1', '2.1']);
 });
 
+const probeSource = Buffer.from('g1.ios.100gb.m');
+const probeLeaf = Buffer.concat([Buffer.from([10, probeSource.length]), probeSource]);
+check('the isolated 100GB query source rewrites to the fixed legacy 20TB target', () => {
+  assert.equal(patchProtobuf(probeLeaf).hits.length, 0);
+  assert.deepEqual(Buffer.from(patchProtobuf(probeLeaf, null, probeSource.toString()).bytes), newLeaf);
+});
+check('query-probe inspect identifies the source without changing the response', async () => {
+  const c = context(probeLeaf, { env: { SOURCE_SKU: probeSource.toString() } });
+  const out = await run(c.ctx);
+  assert.deepEqual(Buffer.from(out.body), probeLeaf);
+  assert.equal(c.last().status, 'candidate_found');
+  assert.equal(c.last().source_sku, probeSource.toString());
+  assert.equal(c.last().target_sku, NEW.toString());
+  assert.equal(c.last().diagnostics.raw_target_occurrences, 1);
+  assert.match(c.notes[0].title, /旧20TB商品查询测试/);
+});
+check('query-probe rewrite leaves the normal 20TB source and other fields intact', async () => {
+  const c = context(Buffer.concat([probeLeaf, oldLeaf]), { mode: 'rewrite', env: { SOURCE_SKU: probeSource.toString() } });
+  const out = await run(c.ctx);
+  assert.deepEqual(Buffer.from(out.body), Buffer.concat([newLeaf, oldLeaf]));
+  assert.equal(c.last().status, 'rewritten');
+});
+check('unapproved source identifiers are rejected before the response is consumed', async () => {
+  const c = context(probeLeaf, { mode: 'rewrite', env: { SOURCE_SKU: 'g1.ios.30gb.m' } });
+  assert.equal(await run(c.ctx), undefined);
+  assert.equal(c.consumed(), 0);
+  assert.equal(c.last().status, 'invalid_source');
+  assert.throws(() => patchProtobuf(probeLeaf, null, 'unexpected'));
+});
+check('query-probe recalculates gRPC length with the alternate source', () => {
+  const out = patchPayload(grpc(probeLeaf), 'application/grpc+proto', null, probeSource.toString());
+  assert.deepEqual(Buffer.from(out.bytes), grpc(newLeaf));
+});
+
 after(async () => {
   await writeFile(new URL('./GoogleOne_Egern_validation.json', import.meta.url), JSON.stringify({
-    result: passed.length === 32 ? 'PASS' : 'INCOMPLETE', checks: passed.length,
+    result: passed.length === 37 ? 'PASS' : 'INCOMPLETE', checks: passed.length,
     scope: 'Node.js offline synthetic-wire and mocked Egern API checks only. No Egern/iOS runtime, live Google response, Apple product availability, price or entitlement verification.',
     checks_passed: passed,
   }, null, 2) + '\n');

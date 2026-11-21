@@ -1,6 +1,6 @@
 {
   "result": "PASS",
-  "checks": 32,
+  "checks": 37,
   "scope": "Node.js offline synthetic-wire and mocked Egern API checks only. No Egern/iOS runtime, live Google response, Apple product availability, price or entitlement verification.",
   "checks_passed": [
     "golden wire bytes: 16-byte SKU becomes 25 bytes",
@@ -34,6 +34,11 @@
     "gRPC candidate diagnostics merge across frames without changing inspection bytes",
     "duplicate early candidates cannot hide a later Ultra-like candidate",
     "clipboard report includes all retained unique candidates beyond the preview",
-    "nested candidate deduplication preserves first path and counts every occurrence"
+    "nested candidate deduplication preserves first path and counts every occurrence",
+    "the isolated 100GB query source rewrites to the fixed legacy 20TB target",
+    "query-probe inspect identifies the source without changing the response",
+    "query-probe rewrite leaves the normal 20TB source and other fields intact",
+    "unapproved source identifiers are rejected before the response is consumed",
+    "query-probe recalculates gRPC length with the alternate source"
   ]
 }

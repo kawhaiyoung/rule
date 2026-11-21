@@ -5,6 +5,8 @@
 const HOST = 'subscriptionsmobile-pa.googleapis.com';
 const OLD_SKU = 'g1.ios.20tb.m.v2';
 const NEW_SKU = 'com.google.one.20tb.m.iog';
+const PROBE_SOURCE_SKU = 'g1.ios.100gb.m';
+const ALLOWED_SOURCES = new Set([OLD_SKU, PROBE_SOURCE_SKU]);
 const MAX_BODY = 2 * 1024 * 1024;
 const MAX_FIELDS = 50000;
 const MAX_DEPTH = 48;
@@ -55,12 +57,12 @@ function mergeDiagnostics(into, from) {
   for (const candidate of from.candidate_skus) rememberCandidate(into, candidate);
 }
 
-function rawTargetOccurrences(data) {
+function rawTargetOccurrences(data, needle = OLD_BYTES) {
   let count = 0;
-  for (let i = 0; i + OLD_BYTES.length <= data.length; i++) {
-    if (data[i] === OLD_BYTES[0] && equal(data.subarray(i, i + OLD_BYTES.length), OLD_BYTES)) {
+  for (let i = 0; i + needle.length <= data.length; i++) {
+    if (data[i] === needle[0] && equal(data.subarray(i, i + needle.length), needle)) {
       count++;
-      i += OLD_BYTES.length - 1;
+      i += needle.length - 1;
     }
   }
   return count;
@@ -142,7 +144,7 @@ function message(data, depth, path, state) {
       }
       let next = payload;
       let nestedHits = [];
-      if (equal(payload, OLD_BYTES)) {
+      if (equal(payload, state.sourceBytes)) {
         diagnostics.target_fields++;
         const dotted = fieldPath.join('.');
         if (!state.paths || state.paths.has(dotted)) {
@@ -179,18 +181,20 @@ function message(data, depth, path, state) {
 }
 
 // Exported only for reproducible offline verification; no external dependencies.
-export function patchProtobuf(data, allowedPaths = null) {
+export function patchProtobuf(data, allowedPaths = null, sourceSku = OLD_SKU) {
+  if (!ALLOWED_SOURCES.has(sourceSku)) throw new RangeError('unsupported source SKU');
   if (!(data instanceof Uint8Array) || data.length > MAX_BODY) {
     throw new LimitExceeded('body size or type');
   }
-  return message(data, 0, [], { fields: 0, paths: allowedPaths });
+  return message(data, 0, [], { fields: 0, paths: allowedPaths, sourceBytes: ascii(sourceSku) });
 }
 
-export function patchPayload(data, contentType, allowedPaths = null) {
+export function patchPayload(data, contentType, allowedPaths = null, sourceSku = OLD_SKU) {
+  if (!ALLOWED_SOURCES.has(sourceSku)) throw new RangeError('unsupported source SKU');
   if (data.length > MAX_BODY) throw new LimitExceeded('body size');
   if (contentType.includes('grpc-web-text')) throw new Malformed('base64 grpc-web unsupported');
   if (!/^application\/grpc(?:[;+\-]|$)/i.test(contentType)) {
-    return patchProtobuf(data, allowedPaths);
+    return patchProtobuf(data, allowedPaths, sourceSku);
   }
   const parts = [];
   const hits = [];
@@ -206,7 +210,7 @@ export function patchPayload(data, contentType, allowedPaths = null) {
       parts.push(data.subarray(offset, end));
     } else {
       if (flag !== 0) throw new Malformed('compressed or unknown grpc frame');
-      const changed = patchProtobuf(data.subarray(offset + 5, end), allowedPaths);
+      const changed = patchProtobuf(data.subarray(offset + 5, end), allowedPaths, sourceSku);
       mergeDiagnostics(diagnostics, changed.diagnostics);
       if (changed.hits.length) {
         const header = new Uint8Array(5);
@@ -236,7 +240,12 @@ export function isTarget(request) {
 
 function report(ctx, record) {
   // Only bounded, prefix-filtered product candidates are retained, without headers or payloads.
+  const configuredSource = String(ctx.env?.SOURCE_SKU ?? OLD_SKU);
+  const sourceSku = ALLOWED_SOURCES.has(configuredSource) ? configuredSource : 'invalid';
+  const title = sourceSku === PROBE_SOURCE_SKU ? 'Google One 旧20TB商品查询测试' : 'Google One 原生接口 · 诊断3';
+  const searchLabel = sourceSku === PROBE_SOURCE_SKU ? '源编号原文' : '目标原文';
   const summary = { diagnostic_version: DIAGNOSTIC_VERSION,
+    source_sku: sourceSku, target_sku: NEW_SKU,
     mode: record.mode, status: record.status, matches: record.matches || 0,
     paths: [...new Set(record.paths || [])].slice(0, 12) };
   if (record.diagnostics) summary.diagnostics = record.diagnostics;
@@ -253,19 +262,21 @@ function report(ctx, record) {
       const detail = summary.diagnostics;
       const candidates = detail?.candidate_skus.slice(0, 8).map(item => item.value).join(', ');
       const reportText = [
-        'Google One 原生接口 · 诊断3',
+        title,
         `模式 ${summary.mode}; 状态 ${summary.status}; 匹配 ${summary.matches} 处`,
+        `源编号 ${sourceSku}; 查询目标 ${NEW_SKU}`,
         ...(detail ? [
-          `正文 ${detail.body_bytes} 字节; 目标原文 ${detail.raw_target_occurrences} 处`,
+          `正文 ${detail.body_bytes} 字节; ${searchLabel} ${detail.raw_target_occurrences} 处`,
           `候选字段 ${detail.candidate_fields} 处; 已收录 ${detail.candidate_skus.length} 个不同编号; 收录截断 ${detail.candidates_truncated ? '是' : '否'}`,
           '候选商品字符串（未经商品语义或可售性验证）：',
           ...detail.candidate_skus.map(item => item.value),
         ] : []),
       ].join('\n');
-      ctx.notify({ title: 'Google One 原生接口 · 诊断3',
+      ctx.notify({ title,
         body: `${summary.mode}: ${summary.status}; 匹配 ${summary.matches} 处` +
+          (sourceSku === PROBE_SOURCE_SKU ? `; 源 ${sourceSku}; 查询目标 ${NEW_SKU}` : '') +
           (summary.paths.length ? `; 路径 ${summary.paths.join(', ')}` : '') +
-          (detail ? `; 正文 ${detail.body_bytes} 字节; 目标原文 ${detail.raw_target_occurrences} 处; 去重候选 ${candidates || '未识别'}; ` +
+          (detail ? `; 正文 ${detail.body_bytes} 字节; ${searchLabel} ${detail.raw_target_occurrences} 处; 去重候选 ${candidates || '未识别'}; ` +
             `预览 ${Math.min(detail.candidate_skus.length, 8)}/${detail.candidate_skus.length}; 收录截断 ${detail.candidates_truncated ? '是' : '否'}` : '') +
           '; 点击复制报告',
         sound: false, action: { type: 'clipboard', text: reportText } });
@@ -282,6 +293,8 @@ export default async function(ctx) {
   }
   const mode = String(ctx.env?.MODE ?? 'inspect');
   const status = value => report(ctx, { mode, status: value });
+  const sourceSku = String(ctx.env?.SOURCE_SKU ?? OLD_SKU);
+  if (!ALLOWED_SOURCES.has(sourceSku)) { status('invalid_source'); return; }
   if (mode !== 'inspect' && mode !== 'rewrite') { status('invalid_mode'); return; }
   if (ctx.response.status < 200 || ctx.response.status >= 300) { status('http_error'); return; }
   const encoding = (ctx.response.headers.get('content-encoding') || '').trim().toLowerCase();
@@ -302,11 +315,11 @@ export default async function(ctx) {
   let original;
   try {
     original = new Uint8Array(await ctx.response.arrayBuffer());
-    const result = patchPayload(original, contentType, paths);
+    const result = patchPayload(original, contentType, paths, sourceSku);
     const changed = mode === 'rewrite' && result.hits.length > 0;
     report(ctx, { mode, status: changed ? 'rewritten' : result.hits.length ? 'candidate_found' : 'no_match',
       matches: result.hits.length, paths: result.hits,
-      diagnostics: { body_bytes: original.length, raw_target_occurrences: rawTargetOccurrences(original),
+      diagnostics: { body_bytes: original.length, raw_target_occurrences: rawTargetOccurrences(original, ascii(sourceSku)),
         ...result.diagnostics } });
     if (!changed) return { body: original };
     const headers = ctx.response.headers;

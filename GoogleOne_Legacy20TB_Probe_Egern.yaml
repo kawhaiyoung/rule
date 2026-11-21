@@ -1,0 +1,53 @@
+# Isolated product-query test. Disable other Google One SKU rewrite modules first.
+# The Google One app can still label the entry as 100 GB. Verify the Apple sheet.
+# Keep inspect until candidate_found; after the quote test, cancel and disable.
+name: 'Google One 旧20TB商品查询测试（100GB月付入口）'
+description: '默认 inspect。rewrite 时将已识别的 100GB 月付编号替换为截图中的旧 20TB 编号。仅核对苹果商品名称与报价，测试后取消并停用。没有验证旧商品可售性、价格或 Google Ultra 权益。'
+author: 'Codex'
+homepage: 'https://github.com/kawhaiyoung/rule'
+manual: 'https://github.com/kawhaiyoung/rule/blob/main/GoogleOne_Egern_README.md'
+icon: 'magnifyingglass'
+
+env_schema:
+  MODE:
+    name: '测试模式'
+    description: '先 inspect 确认 100GB 编号命中，再选 rewrite 查看苹果是否返回旧 20TB 商品。查询报价后取消购买面板并停用模块。'
+    default_value: 'inspect'
+    options:
+      - 'inspect'
+      - 'rewrite'
+  NOTIFY:
+    name: '状态通知'
+    default_value: 'true'
+    options:
+      - 'true'
+      - 'false'
+
+mitm:
+  hostnames:
+    - 'subscriptionsmobile-pa.googleapis.com'
+
+http_captures:
+  - 'subscriptionsmobile-pa.googleapis.com'
+
+scriptings:
+  - http_request:
+      name: 'Google One 旧20TB查询 identity 编码'
+      match: '^https://subscriptionsmobile-pa\.googleapis\.com(?::443)?/(?:[^?#]*/)?GetDynamicStorefrontInfo(?:\?[^#]*)?$'
+      script_url: 'https://raw.githubusercontent.com/kawhaiyoung/rule/main/GoogleOne_Native_20TB_Egern.js?probe=legacy20tb-v1'
+      update_interval: 300
+      body_required: false
+      timeout: 10
+      env:
+        SOURCE_SKU: 'g1.ios.100gb.m'
+  - http_response:
+      name: 'Google One 100GB入口查询旧20TB'
+      match: '^https://subscriptionsmobile-pa\.googleapis\.com(?::443)?/(?:[^?#]*/)?GetDynamicStorefrontInfo(?:\?[^#]*)?$'
+      script_url: 'https://raw.githubusercontent.com/kawhaiyoung/rule/main/GoogleOne_Native_20TB_Egern.js?probe=legacy20tb-v1'
+      update_interval: 300
+      body_required: true
+      binary_body: true
+      max_size: 2097152
+      timeout: 10
+      env:
+        SOURCE_SKU: 'g1.ios.100gb.m'

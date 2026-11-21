@@ -8,8 +8,29 @@
 | --- | --- | --- |
 | [原有网页版模块](https://raw.githubusercontent.com/kawhaiyoung/rule/main/GoogleOne_TR_Ultra_Egern.yaml) | `https://one.google.com/ai` 及其查询参数 | 文本替换，30TB 规则开启，20TB 备用规则关闭 |
 | [原生 20TB 实验模块](https://raw.githubusercontent.com/kawhaiyoung/rule/main/GoogleOne_Native_20TB_Egern.yaml) | 截图中的 `subscriptionsmobile-pa.googleapis.com`，路径以 `/GetDynamicStorefrontInfo` 结尾的 POST 响应 | `inspect` 检查模式，返回原响应字节 |
+| [旧20TB商品查询测试](https://raw.githubusercontent.com/kawhaiyoung/rule/main/GoogleOne_Legacy20TB_Probe_Egern.yaml) | 同一原生接口，固定使用 `g1.ios.100gb.m` 作为来源 | 默认 `inspect`；需明确切换 `rewrite` 才会让 100GB 月付入口尝试查询旧20TB商品 |
 
 原生模块会下载[配套 JavaScript](https://raw.githubusercontent.com/kawhaiyoung/rule/main/GoogleOne_Native_20TB_Egern.js)。它使用 Egern 官方原生脚本 API，要求当前版本支持 `export default async function(ctx)`、`binary_body` 和 `arrayBuffer()`。本次没有推断或添加原生 30TB 映射。
+
+## 通过100GB月付入口测试旧20TB商品
+
+此测试用于检查 App 是否接受替换后的商品编号，以及苹果是否仍能返回旧20TB商品和报价。它不验证 Google 会为该商品授予哪些权益。StoreKit 可以按 App 从服务器取得的商品编号查询商品，但当前 App 是否会按修改后的字段发起查询，仍需实际核对。[Apple 商品查询 API](https://developer.apple.com/documentation/storekit/product/products(for:).md)
+
+测试模块固定使用以下映射：
+
+```text
+g1.ios.100gb.m  →  com.google.one.20tb.m.iog
+```
+
+1. 停用其他 Google One SKU 改写模块，启用“旧20TB商品查询测试”。沿用已有的 Egern 证书。
+2. 保持 `inspect`，重连 Egern，完全退出并重新打开 Google One，让它重新加载普通存储套餐。检查通知标题为“Google One 旧20TB商品查询测试”，源编号应为 `g1.ios.100gb.m`。
+3. 只有通知出现 `candidate_found`、匹配数量大于 0 时，才将测试模式改为 `rewrite`。保存，重连 Egern，再次完全退出并重新打开 Google One。
+4. 确认新通知出现 `rewritten`，然后在普通存储套餐中选择 **100GB 月付**。本测试不处理100GB年付条目，也不要求从 Ultra 页面进入。
+5. 在苹果购买确认面板中查看商品名称、容量、币种、金额和周期。记录这些内容后取消购买面板，停用测试模块。不要在此查询测试中确认购买。
+
+Google One 的页面文字可能仍写100GB，因为测试只替换商品编号。苹果确认面板显示的商品必须另行核对；Google One 页面本身的容量和价格不能作为测试结果。如果苹果仍显示100GB、提示商品不可用，或没有出现购买面板，则此次查询没有得到预期验证。即使苹果返回20TB商品，也只能说明该次商品查询有结果，不能证明它具有 Ultra 权益。
+
+共享脚本只接受预设的截图来源编号和此100GB月付来源编号，查询目标固定为旧20TB编号；默认原生模块仍使用截图中的20TB来源。测试模块使用独立名称和版本化脚本链接，不会把现有原生模块的默认检查来源改为100GB。
 
 ## 在 Egern 中导入原生模块
 
@@ -84,7 +105,7 @@ modules:
 
 ## 验证记录与官方参考
 
-原生脚本通过 32 项 Node.js 离线检查，覆盖两处 varint 长度边界、精确匹配、无关字段保留、gRPC 帧、URL 范围、失败透传、候选去重、截断提示和报告复制内容。Egern API 使用测试替身，检查结果不能替代对手机真实响应、商品字段和购买结果的核对。
+共享脚本通过 37 项 Node.js 离线检查，覆盖两处 varint 长度边界、精确匹配、无关字段保留、gRPC 帧、URL 范围、失败透传、候选去重、截断提示、报告复制，以及受限100GB来源的检查和改写。Egern API 使用测试替身，检查结果不能替代对手机真实响应、商品字段和购买结果的核对。
 
 将[测试脚本](https://raw.githubusercontent.com/kawhaiyoung/rule/main/GoogleOne_Native_20TB.test.mjs)与配套 JavaScript 放在同一目录，可用 `node --test GoogleOne_Native_20TB.test.mjs` 复查；[验证记录](https://raw.githubusercontent.com/kawhaiyoung/rule/main/GoogleOne_Egern_validation.json)列出了检查范围。
 
