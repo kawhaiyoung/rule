@@ -1,0 +1,28 @@
+{
+  "result": "PASS",
+  "checks": 21,
+  "scope": "Offline YAML parsing, URL boundary and synthetic text replacement only. Google app runtime, Apple quote and Google entitlement not tested.",
+  "checks_passed": [
+    "MITM domain scoped",
+    "capture scoped",
+    "both tutorial rules enabled",
+    "query URL matches",
+    "plain URL matches",
+    "excludes http://one.google.com/ai",
+    "excludes https://one.google.com.evil/ai",
+    "excludes https://one.google.com/aix",
+    "excludes https://one.google.com/ai/extra",
+    "excludes https://subscriptionsmobile-pa.googleapis.com/GetDynamicStorefrontInfo",
+    "excludes https://buy.itunes.apple.com/ai",
+    "query URL matches",
+    "plain URL matches",
+    "excludes http://one.google.com/ai",
+    "excludes https://one.google.com.evil/ai",
+    "excludes https://one.google.com/aix",
+    "excludes https://one.google.com/ai/extra",
+    "excludes https://subscriptionsmobile-pa.googleapis.com/GetDynamicStorefrontInfo",
+    "excludes https://buy.itunes.apple.com/ai",
+    "preserves product prefix",
+    "unrelated product and title unchanged"
+  ]
+}

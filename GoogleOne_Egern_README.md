@@ -1,16 +1,43 @@
 # Google One Egern 模块使用说明
 
-原有模块处理 `one.google.com/ai` 的文本响应。新增模块根据用户提供的截图，处理原生接口的二进制 protobuf 响应。原生版默认只检查，适合先确认当前 App 是否使用截图中的接口和完整 SKU。商品字段和改写效果需要根据手机的真实响应核对；旧商品的价格、可售性和 Ultra 权益均未验证。
+这些模块涉及两条不同路径：Google 搜索 App 中的 `one.google.com/ai` 网页响应，以及 Google One 原生目录的 protobuf 响应。原生目录中的100GB商品查询测试不能代替 Google App 的 Ultra 订阅流程。商品字段、苹果报价和 Google 权益需要分别核对。
 
 ## 选择模块
 
 | 模块 | 响应范围 | 默认行为 |
 | --- | --- | --- |
+| [Google App 教程对照模块](https://raw.githubusercontent.com/kawhaiyoung/rule/main/GoogleApp_Ultra_Web_Egern.yaml) | `https://one.google.com/ai` 及其查询参数；按教程在彩色G图标的 Google 搜索 App 中使用 | 20TB、30TB文本规则均开启；没有原生脚本诊断通知 |
 | [原有网页版模块](https://raw.githubusercontent.com/kawhaiyoung/rule/main/GoogleOne_TR_Ultra_Egern.yaml) | `https://one.google.com/ai` 及其查询参数 | 文本替换，30TB 规则开启，20TB 备用规则关闭 |
 | [原生 20TB 实验模块](https://raw.githubusercontent.com/kawhaiyoung/rule/main/GoogleOne_Native_20TB_Egern.yaml) | 截图中的 `subscriptionsmobile-pa.googleapis.com`，路径以 `/GetDynamicStorefrontInfo` 结尾的 POST 响应 | `inspect` 检查模式，返回原响应字节 |
 | [旧20TB商品查询测试](https://raw.githubusercontent.com/kawhaiyoung/rule/main/GoogleOne_Legacy20TB_Probe_Egern.yaml) | 同一原生接口，固定使用 `g1.ios.100gb.m` 作为来源 | 默认 `inspect`；需明确切换 `rewrite` 才会让 100GB 月付入口尝试查询旧20TB商品 |
 
 原生模块会下载[配套 JavaScript](https://raw.githubusercontent.com/kawhaiyoung/rule/main/GoogleOne_Native_20TB_Egern.js)。它使用 Egern 官方原生脚本 API，要求当前版本支持 `export default async function(ctx)`、`binary_body` 和 `arrayBuffer()`。本次没有推断或添加原生 30TB 映射。
+
+## NodeSeek教程对照与入口修正
+
+新参考为[NodeSeek教程](https://www.nodeseek.com/post-1070216-1)及其[第二页回复](https://www.nodeseek.com/post-1070216-2)。作者要求从 Google App 的设置进入 Google One 订阅；购买截图显示彩色G图标，苹果面板为30TB、每月 TRY 2,949.99。作者还限定为新订阅，并称已有Lite等方案的升级不适用。这是教程作者的适用条件，尚未独立验证。
+
+教程的两条文本规则与原有网页版模块相同。新增的 Google App 模块把两条规则都启用，并明确标注 App 和接口范围。它保留响应中已有的完整商品编号前缀，只修改下列片段：
+
+```text
+20tb.m.v2     → 20tb.m
+30tb.ai.pro.m → 30tb.m
+```
+
+这里的 Google App 指[Google 搜索应用](https://apps.apple.com/tr/app/google/id284815942)。教程截图中的 Google App 购买流程，与原生探针借用 Google One 的100GB入口查询固定旧商品编号，是两种实验；不能因为容量相同就视为同一笔商品和权益。
+
+1. 取消尚未完成的测试购买面板，停用100GB查询模块和其他 Google One SKU 模块。
+2. 在 Egern 中导入并启用“Google App Ultra 网页 SKU 改写（教程对照）”，沿用已安装、受信任的 Egern 证书。
+3. 先核对账号是否符合作者声称的“新订阅”条件，不要为了建立入口而购买 Lite 或100GB等其他方案。
+4. 在彩色G图标的 Google App 中，按教程进入设置中的 Google One 订阅入口，再选择 Ultra 方案。实际菜单可能随版本和账号状态变化，以手机界面为准。
+5. 在 Egern HTTP 抓包中核对是否产生 `one.google.com/ai` 请求，以及实际响应中是否存在相应源片段。本模块使用 Egern 内置文本重写，不会弹出 `candidate_found` 或 `rewritten` 通知；抓包视图若显示原始响应，也不能仅凭原字符串仍在就判定改写失败。
+6. 只查看苹果购买面板，核对所属 App、商品、币种、金额和周期，然后取消。页面价签和苹果报价可能不同，二者都不能证明 Google 后端已授予 Ultra。
+
+模块按主机和URL匹配，不能识别请求由哪个 App 发起；访问同一URL的其他客户端也可能受到规则影响。检查结束后停用模块。
+
+证据范围：帖子提供了改写配置和苹果购买面板，[回复中有人自述成功](https://www.nodeseek.com/post-1070216-1#10)。所查看的截图没有展示购买完成后的 Google Ultra 会员状态，也没有提供具体旧SKU与Ultra权益的官方对应关系。因此，这篇教程不足以确认100GB探针所查询的旧20TB商品一定包含Ultra，也不足以保证新的 Google App 流程能够长期保留权益。
+
+Google App模块仅完成 YAML、URL边界和合成文本替换的离线检查，尚未在手机的 Google App 中实测。原生脚本的37项检查不代表这条网页流程已经通过手机验证。
 
 ## 通过100GB月付入口测试旧20TB商品
 

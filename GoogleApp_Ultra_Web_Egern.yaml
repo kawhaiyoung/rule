@@ -1,0 +1,33 @@
+# Comparison implementation of the user-provided NodeSeek tutorial.
+# Intended entry: the Google search app (multicolour G), Settings > Google One.
+# The author limits the recipe to a new subscription, not an existing-plan upgrade.
+# That eligibility restriction and Google entitlement mapping are not independently verified.
+name: 'Google App Ultra 网页 SKU 改写（教程对照）'
+description: '用于彩色G图标的Google App教程路径。20TB、30TB月付规则均开启，仅处理one.google.com/ai文本响应；使用内置重写，不弹原生诊断通知。价格、商品可售性和Ultra权益需分别核对。'
+author: 'Codex'
+homepage: 'https://www.nodeseek.com/post-1070216-1'
+manual: 'https://github.com/kawhaiyoung/rule/blob/main/GoogleOne_Egern_README.md'
+icon: 'arrow.triangle.2.circlepath'
+
+# Reuse the existing trusted Egern CA. No CA or proxy-server settings are replaced.
+mitm:
+  hostnames:
+    - 'one.google.com'
+
+http_captures:
+  - 'one.google.com'
+
+# The source provides fragments, not complete product identifiers.
+# Preserve the actual prefix supplied to this app. Do not force the Google One
+# native probe's com.google.one.20tb.m.iog identifier into the Google app flow.
+body_rewrites:
+  - response_regex:
+      match: '^https://one\.google\.com/ai(?:\?|$)'
+      find: '20tb\.m\.v2'
+      replace: '20tb.m'
+      disabled: false
+  - response_regex:
+      match: '^https://one\.google\.com/ai(?:\?|$)'
+      find: '30tb\.ai\.pro\.m'
+      replace: '30tb.m'
+      disabled: false
