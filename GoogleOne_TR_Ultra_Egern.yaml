@@ -1,0 +1,35 @@
+# Egern 原生 YAML 模块，按模块导入。
+# 规则来源：https://linux.do/t/topic/3216273 中的截图。
+# 仅完成 SKU 字符串替换；旧商品是否可售、实际价格和权益需要现场核对。
+name: 'Google One 土区 Ultra SKU 调试'
+description: '默认启用 30TB 规则，20TB 备用规则关闭。仅处理 one.google.com/ai 的响应；结算地区、价格和权益以实际账户及商店结果为准。'
+author: 'Codex'
+homepage: 'https://linux.do/t/topic/3216273'
+icon: 'arrow.triangle.2.circlepath'
+
+# 使用当前 Egern 配置中的证书；请在手机上安装并信任该证书。
+# 模块中不放入 ca_p12 / ca_passphrase，避免覆盖已有证书。
+mitm:
+  hostnames:
+    - 'one.google.com'
+
+# 保留该域名的 HTTP 记录，方便比较改写前后的新请求。
+http_captures:
+  - 'one.google.com'
+
+body_rewrites:
+  # 30TB：原帖 30tb.ai.pro.m -> 30tb.m，默认开启。
+  # 做对照时仅将本条 disabled 改为 true，保持模块和抓包启用。
+  - response_regex:
+      match: '^https://one\.google\.com/ai(?:\?|$)'
+      find: '30tb\.ai\.pro\.m'
+      replace: '30tb.m'
+      disabled: false
+
+  # 20TB：原帖 20tb.m.v2 -> 20tb.m，默认关闭。
+  # 如实际响应仅出现这个片段，关闭上面的 30TB 规则后再开启本条。
+  - response_regex:
+      match: '^https://one\.google\.com/ai(?:\?|$)'
+      find: '20tb\.m\.v2'
+      replace: '20tb.m'
+      disabled: true
