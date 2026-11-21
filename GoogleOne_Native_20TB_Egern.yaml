@@ -1,0 +1,50 @@
+# Experimental native protobuf module; separate from the one.google.com/ai text module.
+# Default inspect mode does not change response bytes. No live purchase validation.
+name: 'Google One 原生 20TB SKU 检查与改写（实验版）'
+description: '仅处理截图所述的 GetDynamicStorefrontInfo。默认检查模式；完整 SKU 精确匹配后可切换 rewrite。未验证当前接口、旧商品可售性、价格或权益。'
+author: 'Codex'
+homepage: 'https://github.com/kawhaiyoung/rule'
+manual: 'https://github.com/kawhaiyoung/rule/blob/main/GoogleOne_Egern_README.md'
+icon: 'arrow.triangle.2.circlepath'
+
+env_schema:
+  MODE:
+    name: '运行模式'
+    description: 'inspect 只检查；rewrite 替换截图中的完整 20TB SKU 并重算 protobuf 长度。'
+    default_value: 'inspect'
+    options:
+      - 'inspect'
+      - 'rewrite'
+  FIELD_PATHS:
+    name: '字段编号路径（可选）'
+    description: '按检查结果限制候选字段，如 1.2.3；多个路径用英文逗号分隔。留空允许所有完整值匹配。没有 .proto，路径含义仍需核对。'
+  NOTIFY:
+    name: '状态通知'
+    description: '状态或匹配数量变化时显示通知；不显示响应内容或账户信息。'
+    default_value: 'true'
+    options:
+      - 'true'
+      - 'false'
+
+mitm:
+  hostnames:
+    - 'subscriptionsmobile-pa.googleapis.com'
+
+http_captures:
+  - 'subscriptionsmobile-pa.googleapis.com'
+
+scriptings:
+  - http_request:
+      name: 'Google One 原生接口 identity 编码'
+      match: '^https://subscriptionsmobile-pa\.googleapis\.com(?::443)?/(?:[^?#]*/)?GetDynamicStorefrontInfo(?:\?[^#]*)?$'
+      script_url: 'https://raw.githubusercontent.com/kawhaiyoung/rule/main/GoogleOne_Native_20TB_Egern.js'
+      body_required: false
+      timeout: 10
+  - http_response:
+      name: 'Google One 原生 20TB protobuf'
+      match: '^https://subscriptionsmobile-pa\.googleapis\.com(?::443)?/(?:[^?#]*/)?GetDynamicStorefrontInfo(?:\?[^#]*)?$'
+      script_url: 'https://raw.githubusercontent.com/kawhaiyoung/rule/main/GoogleOne_Native_20TB_Egern.js'
+      body_required: true
+      binary_body: true
+      max_size: 2097152
+      timeout: 10

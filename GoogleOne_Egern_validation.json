@@ -1,0 +1,29 @@
+{
+  "result": "PASS",
+  "checks": 22,
+  "scope": "Node.js offline synthetic-wire and mocked Egern API checks only. No Egern/iOS runtime, live Google response, Apple product availability, price or entitlement verification.",
+  "checks_passed": [
+    "golden wire bytes: 16-byte SKU becomes 25 bytes",
+    "nested lengths grow across the 127-byte varint boundary",
+    "ancestor lengths grow across the 16383-byte varint boundary",
+    "full-value matching preserves an SKU embedded in longer text",
+    "unrelated title and price bytes are unchanged",
+    "uint64, fixed32, fixed64 and noncanonical varints remain byte identical",
+    "field path allowlist selects only the requested nested occurrence",
+    "invalid/truncated root messages are rejected without partial results",
+    "uncompressed gRPC lengths and unrelated frames are preserved correctly",
+    "gRPC-web trailer bytes are preserved",
+    "compressed, truncated and base64 gRPC are rejected",
+    "target scope excludes other domains, methods and purchase verification",
+    "request phase asks for identity encoding and retains auth headers",
+    "default inspect reports a candidate and returns identical bytes",
+    "rewrite returns valid bytes and clears stale length/digest metadata",
+    "gRPC MIME is accepted by the Egern entrypoint",
+    "malformed payload after a candidate passes through all original bytes",
+    "compression, errors, JSON and invalid options pass through before consuming",
+    "no-match response stays byte identical",
+    "field-count and nesting limits fail open in Egern",
+    "body-size limit returns original bytes",
+    "disabled notifications do not affect processing"
+  ]
+}
