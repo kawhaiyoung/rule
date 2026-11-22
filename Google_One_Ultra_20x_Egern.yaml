@@ -1,0 +1,20 @@
+# Native Egern YAML module: only the Ultra 20x replacement from the source post.
+# Source: https://linux.do/t/topic/3221220
+# Syntax checked against Egern documentation on 2026-11-22.
+# Not tested in Egern or against Google/App Store billing.
+# Requires an installed, trusted Egern CA certificate for HTTPS rewriting.
+# Configure QUIC blocking separately on the active proxy/policy group if needed.
+
+name: 'Google One Ultra 20x'
+description: 'Reproduces the source post product-ID replacement for Ultra 20x. Promotional eligibility and price are not guaranteed.'
+homepage: 'https://linux.do/t/topic/3221220'
+
+body_rewrites:
+  - response_regex:
+      match: '^https://one\.google\.com/ai\?'
+      find: 'g1\.ios\.30tb\.ai\.pro\.m'
+      replace: 'g1.ai.ultra.3months_ip_90p.acq'
+
+mitm:
+  hostnames:
+    - 'one.google.com'
