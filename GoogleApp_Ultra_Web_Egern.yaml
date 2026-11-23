@@ -1,25 +1,18 @@
-# Revision 2: preserve the tutorial's Turkish-storefront WEB fragment mappings.
+# Revision 3: built-in WEB mappings are independent of optional diagnostic scripts.
 # Intended entry: the Google search app (multicolour G), Settings > Google One.
 # Apple-billed existing subscriptions may redirect to their original purchase app.
 # No fixed price or eligibility is encoded; Apple quotes and Google entitlements need live checks.
-name: 'Google App Ultra 网页 SKU 改写（诊断2）'
-description: '网页保留20TB、30TB旧SKU映射并显示命中状态；新增原生套餐接口检查，不改写原生响应。Google页面价签可能不变，尚未验证已有会员升级、Apple报价或Ultra权益。'
+name: 'Google App Ultra 网页 SKU 改写（诊断3）'
+description: '恢复内置20TB、30TB网页SKU规则；脚本只检查并写入日志，诊断失败不影响内置规则。尚未验证已有会员低价升级、Apple报价或Ultra权益。'
 author: 'Codex'
 homepage: 'https://www.nodeseek.com/post-1070216-1'
 manual: 'https://github.com/kawhaiyoung/rule/blob/main/GoogleOne_Egern_README.md'
 icon: 'arrow.triangle.2.circlepath'
 
 env_schema:
-  MODE:
-    name: '网页处理模式'
-    description: 'rewrite沿用教程两条网页映射；inspect只检查。原生接口始终只检查。'
-    default_value: 'rewrite'
-    options:
-      - 'rewrite'
-      - 'inspect'
   NOTIFY:
     name: '诊断通知'
-    description: '显示命中及替换计数，点击通知可复制最近报告；不自动上传报告。'
+    description: '显示检查状态，点击通知可复制报告；未显示通知时可查看设置中的脚本日志。'
     default_value: 'true'
     options:
       - 'true'
@@ -37,35 +30,48 @@ http_captures:
   - 'one.google.com'
   - 'subscriptionsmobile-pa.googleapis.com'
 
+# Preserve the original tutorial mappings without depending on JavaScript execution.
+body_rewrites:
+  - response_regex:
+      match: '^https://one\.google\.com(?::443)?/ai/?(?:\?[^#]*)?$'
+      find: '20tb\.m\.v2'
+      replace: '20tb.m'
+      disabled: false
+  - response_regex:
+      match: '^https://one\.google\.com(?::443)?/ai/?(?:\?[^#]*)?$'
+      find: '30tb\.ai\.pro\.m'
+      replace: '30tb.m'
+      disabled: false
+
 scriptings:
   - http_request:
-      name: 'Google App Ultra 诊断2 · 新请求'
+      name: 'Google App Ultra 诊断3 · 新请求'
       match: '^https://(?:one\.google\.com(?::443)?/ai/?(?:\?[^#]*)?|subscriptionsmobile-pa\.googleapis\.com(?::443)?/(?:[^?#]*/)?GetDynamicStorefrontInfo(?:\?[^#]*)?)$'
-      script_url: 'https://raw.githubusercontent.com/kawhaiyoung/rule/main/GoogleApp_Ultra_Web_Egern.js?v=2'
+      script_url: 'https://raw.githubusercontent.com/kawhaiyoung/rule/main/GoogleApp_Ultra_Web_Egern.js?v=3'
       update_interval: 300
       body_required: false
       timeout: 10
   - http_response:
-      name: 'Google App Ultra 诊断2 · 网页'
+      name: 'Google App Ultra 诊断3 · 网页'
       match: '^https://one\.google\.com(?::443)?/ai/?(?:\?[^#]*)?$'
-      script_url: 'https://raw.githubusercontent.com/kawhaiyoung/rule/main/GoogleApp_Ultra_Web_Egern.js?v=2'
+      script_url: 'https://raw.githubusercontent.com/kawhaiyoung/rule/main/GoogleApp_Ultra_Web_Egern.js?v=3'
       update_interval: 300
       body_required: true
       binary_body: true
       max_size: 2097152
       timeout: 10
   - http_response:
-      name: 'Google App Ultra 诊断2 · 原生只检查'
+      name: 'Google App Ultra 诊断3 · 原生只检查'
       match: '^https://subscriptionsmobile-pa\.googleapis\.com(?::443)?/(?:[^?#]*/)?GetDynamicStorefrontInfo(?:\?[^#]*)?$'
-      script_url: 'https://raw.githubusercontent.com/kawhaiyoung/rule/main/GoogleApp_Ultra_Web_Egern.js?v=2'
+      script_url: 'https://raw.githubusercontent.com/kawhaiyoung/rule/main/GoogleApp_Ultra_Web_Egern.js?v=3'
       update_interval: 300
       body_required: true
       binary_body: true
       max_size: 2097152
       timeout: 10
   - generic:
-      name: 'Google App Ultra 诊断2 · 最近报告'
-      script_url: 'https://raw.githubusercontent.com/kawhaiyoung/rule/main/GoogleApp_Ultra_Web_Egern.js?v=2'
+      name: 'Google App Ultra 诊断3 · 最近报告'
+      script_url: 'https://raw.githubusercontent.com/kawhaiyoung/rule/main/GoogleApp_Ultra_Web_Egern.js?v=3'
       update_interval: 300
       timeout: 10
 

@@ -1,24 +1,38 @@
 {
-  "diagnostic_version": 2,
+  "diagnostic_version": 3,
   "date": "2026-11-23",
-  "test_command": "node --test --test-reporter=spec work/GoogleApp_Ultra_Web_Egern.test.mjs",
-  "tests": 20,
-  "passed": 20,
-  "failed": 0,
-  "scope": [
-    "YAML parsing and scoped URL matching",
-    "existing 20TB and 30TB web mappings; price labels unchanged",
-    "native protobuf and gRPC inspection only; original bytes preserved",
-    "malformed payloads, field/depth/size limits, stream-safe pass-through",
-    "bounded reports exclude full responses, query strings, credentials and receipts"
+  "node_tests": {
+    "passed": 24,
+    "failed": 0
+  },
+  "javascriptcore_tests": {
+    "passed": 4,
+    "failed": 0,
+    "engine": "macOS JavaScriptCore",
+    "loader": "minimal documented-default-entry fixture",
+    "api_bridge": "test fixture, not Egern",
+    "scenarios": [
+      "manual",
+      "request",
+      "web",
+      "native"
+    ],
+    "browser_URL_global": "not provided"
+  },
+  "changes": [
+    "Restore original built-in web body_rewrites independent of scripts",
+    "Only documented default export in shipped JavaScript",
+    "No browser URL or Headers global dependency",
+    "Bounded console diagnostics for entry, API availability and results",
+    "All diagnostic response bodies preserved"
   ],
+  "native_rewriting": false,
   "not_verified": [
-    "iPhone Egern runtime",
-    "actual existing-member upgrade request path",
-    "Apple SKU availability or TRY price",
-    "purchase completion",
+    "Exact root cause of iPhone script error",
+    "iPhone script runtime",
+    "Existing-member discounted upgrade",
+    "Apple price or SKU availability",
     "Google Ultra entitlement"
-  ],
-  "native_rewriting": false
+  ]
 }
 

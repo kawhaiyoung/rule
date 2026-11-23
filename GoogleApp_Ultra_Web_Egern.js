@@ -1,16 +1,16 @@
 // Egern native API: https://egernapp.com/zh-CN/docs/javascript-api/
-// Diagnostic revision 2, 2026-11-23. No live purchase or entitlement validation.
-// Web mappings are the two fragments already used by GoogleApp_Ultra_Web_Egern.yaml.
-// Native storefront responses are INSPECTED ONLY; no schema or product semantics inferred.
+// Diagnostic revision 3, 2026-11-23. No live purchase or entitlement validation.
+// Web mappings now use Egern's independent built-in body_rewrites.
+// This script only inspects; every response body is returned unchanged.
+// Only the documented default export is used. No browser URL/Headers globals are required.
 // Diagnostics contain bounded product-like tokens, counts and numeric field paths.
 // No HTTP calls, account identifiers, headers, receipts or full bodies are saved by this script.
-export const VERSION = 2;
+const VERSION = 3;
 const MAX_BODY = 2 * 1024 * 1024;
 const MAX_FIELDS = 50000;
 const MAX_DEPTH = 48;
 const MAX_CANDIDATES = 64;
-const KEY = 'google-app-ultra-web:diagnostic-v2';
-const NATIVE_HOST = 'subscriptionsmobile-pa.googleapis.com';
+const KEY = 'google-app-ultra-web:diagnostic-v3';
 const TOKEN = /(?:g\d+\.(?:ios|ai)\.|com\.google\.one\.)[A-Za-z0-9_.-]+/g;
 const MAPPINGS = [
   ['20tb.m.v2', '20tb.m'],
@@ -19,15 +19,12 @@ const MAPPINGS = [
 class Malformed extends Error {}
 class LimitExceeded extends Error {}
 
-export function endpoint(request) {
+function endpoint(request) {
   if (!request) return null;
-  try {
-    const url = new URL(request.url);
-    if (url.protocol !== 'https:' || (url.port && url.port !== '443') || url.hash) return null;
-    const method = String(request.method || '').toUpperCase();
-    if (url.hostname === 'one.google.com' && /^\/ai\/?$/.test(url.pathname) && method === 'GET') return 'web';
-    if (url.hostname === NATIVE_HOST && /\/GetDynamicStorefrontInfo$/.test(url.pathname) && method === 'POST') return 'native';
-  } catch {}
+  const url = typeof request.url === 'string' ? request.url : '';
+  const method = String(request.method || '').toUpperCase();
+  if (method === 'GET' && /^https:\/\/one\.google\.com(?::443)?\/ai\/?(?:\?[^#]*)?$/.test(url)) return 'web';
+  if (method === 'POST' && /^https:\/\/subscriptionsmobile-pa\.googleapis\.com(?::443)?\/(?:[^?#]*\/)?GetDynamicStorefrontInfo(?:\?[^#]*)?$/.test(url)) return 'native';
   return null;
 }
 
@@ -75,20 +72,16 @@ function textDiagnostics(text) {
   return result;
 }
 
-export function patchText(text, rewrite = true) {
+function inspectText(text) {
   if (typeof text !== 'string' || text.length > MAX_BODY) throw new LimitExceeded('text size');
   const result = textDiagnostics(text);
-  let body = text;
-  let replacements = 0;
-  for (const [source, target] of MAPPINGS) {
+  let matches = 0;
+  for (const [source] of MAPPINGS) {
     const pattern = new RegExp('(^|[^A-Za-z0-9_-])' + source.replace(/\./g, '\\.') +
       '(?![A-Za-z0-9_.-])', 'g');
-    body = body.replace(pattern, (_, prefix) => {
-      replacements++;
-      return prefix + (rewrite ? target : source);
-    });
+    for (const match of text.matchAll(pattern)) matches++;
   }
-  return { body, replacements, diagnostics: result };
+  return { matches, diagnostics: result };
 }
 
 function productToken(bytes) {
@@ -162,7 +155,7 @@ function inspectMessage(data, path, depth, state) {
   return found;
 }
 
-export function inspectPayload(bytes, contentType = '') {
+function inspectPayload(bytes, contentType = '') {
   if (!(bytes instanceof Uint8Array) || bytes.length > MAX_BODY) throw new LimitExceeded('binary size');
   const type = contentType.toLowerCase();
   if (type.includes('grpc-web-text')) throw new Malformed('base64 grpc-web unsupported');
@@ -188,12 +181,16 @@ export function inspectPayload(bytes, contentType = '') {
 }
 
 function loadReports(ctx) {
-  try { return ctx.storage.getJSON(KEY) || {}; } catch { return {}; }
+  try {
+    const value = ctx.storage.getJSON(KEY);
+    return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  } catch { return {}; }
 }
 
 function reportText(records) {
-  const lines = ['Google App Ultra 土区升级 · 诊断2',
-    '网页只替换旧模块中的商品片段；原生接口只检查。',
+  const lines = ['Google App Ultra 土区升级 · 诊断3',
+    '本脚本只检查；网页改写由模块内置规则独立执行。',
+    '脚本看到的正文可能位于内置重写之前或之后，不能仅凭源编号判断重写成败。',
     'Google 页面价签、Apple 报价、Google 实际权益需要分别核对。'];
   for (const kind of ['web', 'native']) {
     const item = records[kind];
@@ -201,7 +198,7 @@ function reportText(records) {
     lines.push('', kind + ': ' + item.status, '时间: ' + item.time,
       '模式: ' + item.mode + '; HTTP: ' + item.http_status +
       '; 类型: ' + (item.content_type || '未提供'),
-      '源片段匹配: ' + (item.matches || 0) + '; 实际替换: ' + (item.replacements || 0));
+      '观察到的源片段: ' + (item.matches || 0) + '; 脚本替换: 0');
     const detail = item.diagnostics;
     if (detail) {
       lines.push('候选字段: ' + detail.candidate_fields + '; 去重候选: ' +
@@ -213,11 +210,23 @@ function reportText(records) {
   return lines.join('\n');
 }
 
+function debug(stage, details = {}) {
+  try {
+    if (typeof console !== 'undefined' && typeof console.log === 'function') {
+      console.log('[ultra_diag3] ' + JSON.stringify({ version: VERSION, stage, ...details }));
+    }
+  } catch {}
+}
+
 function notifyReport(ctx, records, body) {
   try {
-    ctx.notify({ title: 'Google App Ultra · 诊断2', body: body + '；点击复制报告',
+    ctx.notify({ title: 'Google App Ultra · 诊断3', body: body + '；点击复制报告',
       sound: false, action: { type: 'clipboard', text: reportText(records) } });
-  } catch {}
+    return true;
+  } catch (error) {
+    debug('notify_failed', { error_name: String(error?.name || 'Error') });
+    return false;
+  }
 }
 
 function report(ctx, kind, record) {
@@ -225,44 +234,46 @@ function report(ctx, kind, record) {
   const previous = records[kind];
   const next = { version: VERSION, endpoint: kind, time: new Date().toISOString(), ...record };
   records[kind] = next;
+  debug('result', next);
   try { ctx.storage.setJSON(KEY, records); } catch {}
   const { time: previousTime, ...oldSummary } = previous || {};
   const { time: nextTime, ...newSummary } = next;
   if (String(ctx.env?.NOTIFY ?? 'true') !== 'true') return;
   if (JSON.stringify(oldSummary) === JSON.stringify(newSummary) &&
     Date.now() - Date.parse(previousTime || '') < 15000) return;
-  notifyReport(ctx, records, kind + ': ' + next.status + '; 匹配 ' + (next.matches || 0) +
-    '; 替换 ' + (next.replacements || 0));
+  notifyReport(ctx, records, kind + ': ' + next.status + '; 观察到源片段 ' + (next.matches || 0));
 }
 
-export default async function(ctx) {
+async function main(ctx) {
   if (!ctx.request) {
     const records = loadReports(ctx);
-    notifyReport(ctx, records, '最近网页及原生接口状态');
+    const sent = notifyReport(ctx, records, '自检运行成功；最近网页及原生接口状态');
+    debug('manual_report', { records });
     return { type: 'widget', padding: 12, children: [
-      { type: 'text', text: 'Ultra 土区升级 · 诊断2' },
+      { type: 'text', text: 'Ultra 土区升级 · 诊断3自检运行成功' },
+      { type: 'text', text: 'Egern: ' + String(ctx.app?.version || '未提供') },
+      { type: 'text', text: '通知调用: ' + (sent ? '已提交' : '失败，请查看日志') },
       { type: 'text', text: 'web: ' + (records.web?.status || '尚无记录') },
       { type: 'text', text: 'native: ' + (records.native?.status || '尚无记录') },
     ] };
   }
   const kind = endpoint(ctx.request);
-  if (!kind) return;
+  if (!kind) { debug('scope_skipped', { method: String(ctx.request.method || '').slice(0, 12) }); return; }
   if (!ctx.response) {
     const headers = ctx.request.headers;
     headers.set('Accept-Encoding', 'identity');
     headers.set('Cache-Control', 'no-cache');
     headers.delete('If-None-Match');
     headers.delete('If-Modified-Since');
+    debug('request_seen', { endpoint: kind });
     return { headers };
   }
-  const mode = String(ctx.env?.MODE ?? 'rewrite');
   const contentType = (ctx.response.headers.get('content-type') || '').toLowerCase();
   const status = (value, extra = {}) => report(ctx, kind, {
-    mode: kind === 'native' ? 'inspect' : mode, status: value,
+    mode: 'inspect', status: value,
     http_status: ctx.response.status,
     content_type: contentType.split(';')[0].slice(0, 80), ...extra,
   });
-  if (mode !== 'rewrite' && mode !== 'inspect') { status('invalid_mode'); return; }
   if (ctx.response.status < 200 || ctx.response.status >= 300) { status('http_not_2xx'); return; }
   const encoding = (ctx.response.headers.get('content-encoding') || '').trim().toLowerCase();
   if (encoding && encoding !== 'identity') { status('encoded_response_passthrough'); return; }
@@ -280,16 +291,12 @@ export default async function(ctx) {
     if (textType) {
       original = await ctx.response.text();
       if (original.length > MAX_BODY) throw new LimitExceeded('text size');
-      const changed = patchText(original, kind === 'web' && mode === 'rewrite');
-      const replacements = kind === 'web' && mode === 'rewrite' ? changed.replacements : 0;
-      status(replacements ? 'web_rewritten' : changed.replacements ? 'source_found' :
-        changed.diagnostics.legacy_fields ? 'legacy_sku_present' : 'no_source_sku', {
-        matches: changed.replacements, replacements, diagnostics: changed.diagnostics,
+      const inspected = inspectText(original);
+      status(inspected.matches ? 'source_found' :
+        inspected.diagnostics.legacy_fields ? 'legacy_sku_present' : 'no_source_sku', {
+        matches: inspected.matches, replacements: 0, diagnostics: inspected.diagnostics,
       });
-      if (!replacements) return { body: original };
-      const headers = ctx.response.headers;
-      for (const name of ['content-length', 'etag', 'content-md5', 'digest', 'content-digest']) headers.delete(name);
-      return { headers, body: changed.body };
+      return { body: original };
     }
     original = new Uint8Array(await ctx.response.arrayBuffer());
     const found = inspectPayload(original, contentType);
@@ -300,6 +307,23 @@ export default async function(ctx) {
   } catch (error) {
     status(error instanceof LimitExceeded ? 'limit_passthrough' : 'parse_failed_passthrough');
     return original !== undefined ? { body: original } : undefined;
+  }
+}
+
+export default async function(ctx) {
+  debug('entry', { context: typeof ctx, has_request: !!ctx?.request, has_response: !!ctx?.response,
+    notify_api: typeof ctx?.notify, storage_api: typeof ctx?.storage?.getJSON,
+    request_headers_api: typeof ctx?.request?.headers?.set,
+    response_headers_api: typeof ctx?.response?.headers?.get,
+    response_text_api: typeof ctx?.response?.text,
+    response_binary_api: typeof ctx?.response?.arrayBuffer,
+    egern_version: String(ctx?.app?.version || 'unknown') });
+  try {
+    if (!ctx || typeof ctx !== 'object') { debug('invalid_context'); return; }
+    return await main(ctx);
+  } catch (error) {
+    debug('unexpected_error', { error_name: String(error?.name || 'Error') });
+    return;
   }
 }
 

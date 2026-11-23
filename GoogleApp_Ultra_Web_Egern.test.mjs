@@ -1,8 +1,16 @@
-import test from 'node:test';
+import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import run, { endpoint, patchText, inspectPayload } from './GoogleApp_Ultra_Web_Egern.js';
+import { readFile } from 'node:fs/promises';
+const production = await readFile(new URL('./GoogleApp_Ultra_Web_Egern.js', import.meta.url), 'utf8');
+// Test-only exports are appended in memory, never shipped to Egern.
+const { default: run, endpoint, inspectText, inspectPayload } = await import(
+  'data:text/javascript;base64,' + Buffer.from(production + '\nexport { endpoint, inspectText, inspectPayload };').toString('base64'));
+const logs = [];
+const originalLog = console.log;
+console.log = (...values) => logs.push(values.join(' '));
+after(() => { console.log = originalLog; });
 
 const SOURCE30 = 'g1.ios.30tb.ai.pro.m';
 const SOURCE20 = 'g1.ios.20tb.m.v2';
@@ -34,6 +42,12 @@ function context(body, { url = WEB, method = url === NATIVE ? 'POST' : 'GET', ty
   };
 }
 const latest = ctx => [...ctx.database.values()][0];
+function configuration() {
+  const path = fileURLToPath(new URL('./GoogleApp_Ultra_Web_Egern.yaml', import.meta.url));
+  const ruby = spawnSync('/usr/bin/ruby', ['-r', 'yaml', '-r', 'json', '-e', 'puts JSON.generate(YAML.load_file(ARGV[0]))', path], { encoding: 'utf8' });
+  assert.equal(ruby.status, 0, ruby.stderr);
+  return JSON.parse(ruby.stdout);
+}
 
 test('URL matching covers queryless and trailing-slash AI pages but excludes payment and unrelated endpoints', () => {
   for (const url of [WEB, 'https://one.google.com/ai', 'https://one.google.com/ai/', 'https://one.google.com:443/ai/?x=1']) assert.equal(endpoint({ url, method: 'GET' }), 'web');
@@ -43,24 +57,29 @@ test('URL matching covers queryless and trailing-slash AI pages but excludes pay
   assert.equal(endpoint({ url: NATIVE, method: 'GET' }), null);
 });
 
-test('web preserves tutorial fragment mappings and full product prefixes without altering price labels', () => {
+test('built-in rules preserve tutorial mappings and price labels independently of scripts', () => {
   const text = JSON.stringify({ products: [SOURCE30, SOURCE20, 'com.google.one.30tb.ai.pro.m'], price: 'PAGE_PRICE_UNCHANGED', activeMember: true });
-  const result = patchText(text);
-  assert.deepEqual(JSON.parse(result.body), { products: [TARGET30, 'g1.ios.20tb.m', 'com.google.one.30tb.m'], price: 'PAGE_PRICE_UNCHANGED', activeMember: true });
-  assert.equal(result.replacements, 3);
+  let body = text;
+  const rules = configuration().body_rewrites;
+  assert.equal(rules.length, 2);
+  for (const { response_regex: rule } of rules) {
+    assert.equal(new RegExp(rule.match).test(WEB), true);
+    assert.equal(rule.disabled, false);
+    body = body.replace(new RegExp(rule.find, 'g'), rule.replace);
+  }
+  assert.deepEqual(JSON.parse(body), { products: [TARGET30, 'g1.ios.20tb.m', 'com.google.one.30tb.m'], price: 'PAGE_PRICE_UNCHANGED', activeMember: true });
 });
 
-test('SKU boundaries exclude similar identifiers and unsupported SKU variants', () => {
+test('text inspection excludes similar identifiers and unsupported SKU variants', () => {
   const text = 'g1.ios.130tb.ai.pro.m g1.ios.30tb.ai.pro.m.v2 g1.ios.30tb.ai.pro.month x30tb.ai.pro.m';
-  assert.equal(patchText(text).body, text);
-  assert.equal(patchText(text).replacements, 0);
+  assert.equal(inspectText(text).matches, 0);
 });
 
-test('inspect mode reports source candidates while preserving text', () => {
-  const result = patchText(JSON.stringify([SOURCE30, SOURCE30, SOURCE20]), false);
-  assert.equal(result.replacements, 3);
+test('inspection reports source candidates without offering any rewrite operation', () => {
+  const result = inspectText(JSON.stringify([SOURCE30, SOURCE30, SOURCE20]));
+  assert.equal(result.matches, 3);
   assert.equal(result.diagnostics.candidate_skus.length, 2);
-  assert.equal(result.body, JSON.stringify([SOURCE30, SOURCE30, SOURCE20]));
+  assert.equal('body' in result, false);
 });
 
 test('native nested candidates have numeric paths and input bytes remain identical', () => {
@@ -105,15 +124,16 @@ test('candidate storage is deduplicated and truncation is explicit', () => {
   assert.equal(result.candidates_truncated, true);
 });
 
-test('web response rewrite removes stale integrity headers but keeps cookies and other metadata', async () => {
+test('web inspection returns the current body unchanged and does not alter response headers', async () => {
   const ctx = context(SOURCE30, { headers: { 'content-length': '18', etag: 'old', 'content-md5': 'old', digest: 'old', 'content-digest': 'old', 'set-cookie': 'KEEP_COOKIE', 'cache-control': 'private' } });
   const result = await run(ctx);
-  assert.equal(result.body, TARGET30);
-  for (const key of ['content-length', 'etag', 'content-md5', 'digest', 'content-digest']) assert.equal(result.headers.has(key), false);
-  assert.equal(result.headers.get('set-cookie'), 'KEEP_COOKIE');
-  assert.equal(result.headers.get('cache-control'), 'private');
-  assert.equal(latest(ctx).web.status, 'web_rewritten');
-  assert.equal(latest(ctx).web.replacements, 1);
+  assert.equal(result.body, SOURCE30);
+  assert.equal(result.headers, undefined);
+  assert.equal(ctx.response.headers.get('etag'), 'old');
+  assert.equal(ctx.response.headers.get('set-cookie'), 'KEEP_COOKIE');
+  assert.equal(ctx.response.headers.get('cache-control'), 'private');
+  assert.equal(latest(ctx).web.status, 'source_found');
+  assert.equal(latest(ctx).web.replacements, 0);
 });
 
 test('native responses stay byte-identical even with web rewrite mode enabled', async () => {
@@ -141,13 +161,12 @@ test('inspect, no-match and existing-legacy paths preserve text after stream con
   }
 });
 
-test('unknown encoding, charset, content type, status and mode leave the body unread', async () => {
+test('unknown encoding, charset, content type and non-2xx status leave the body unread', async () => {
   const cases = [
     [{ headers: { 'content-encoding': 'br' } }, 'encoded_response_passthrough'],
     [{ type: 'text/html; charset=gbk' }, 'unsupported_charset'],
     [{ type: 'image/png' }, 'unsupported_content_type'],
     [{ status: 304 }, 'http_not_2xx'],
-    [{ env: { MODE: 'unknown' } }, 'invalid_mode'],
   ];
   for (const [options, expected] of cases) {
     const ctx = context(SOURCE30, options);
@@ -179,19 +198,22 @@ test('fresh-request handling changes cache and encoding headers while preserving
   assert.equal(ctx.request.url, WEB);
 });
 
-test('reports exclude account URLs, full responses, auth headers and receipts', async () => {
+test('reports and console diagnostics exclude account URLs, full responses, auth headers and receipts', async () => {
+  const start = logs.length;
   const ctx = context(JSON.stringify({ sku: SOURCE30, account: 'DO_NOT_LOG_ACCOUNT', receipt: 'DO_NOT_LOG_RECEIPT' }), { url: WEB + '&account=DO_NOT_LOG_URL' });
   await run(ctx);
-  const output = JSON.stringify({ records: latest(ctx), notifications: ctx.notifications });
+  const output = JSON.stringify({ records: latest(ctx), notifications: ctx.notifications, logs: logs.slice(start) });
   for (const secret of ['DO_NOT_LOG_ACCOUNT', 'DO_NOT_LOG_RECEIPT', 'DO_NOT_LOG_AUTH', 'DO_NOT_LOG_COOKIE', 'DO_NOT_LOG_URL']) assert.equal(output.includes(secret), false);
   assert.equal(output.includes(SOURCE30), true);
 });
 
-test('notification or storage failures do not break web rewriting', async () => {
+test('notification or storage failures do not break response inspection and are visible in logs', async () => {
+  const start = logs.length;
   const ctx = context(SOURCE30);
   ctx.notify = () => { throw Error('notifications unavailable'); };
   ctx.storage = { getJSON() { throw Error('storage unavailable'); }, setJSON() { throw Error('storage unavailable'); } };
-  assert.equal((await run(ctx)).body, TARGET30);
+  assert.equal((await run(ctx)).body, SOURCE30);
+  assert.equal(logs.slice(start).some(x => x.includes('notify_failed')), true);
 });
 
 test('manual report includes both endpoints and works independently of automatic notifications', async () => {
@@ -204,17 +226,14 @@ test('manual report includes both endpoints and works independently of automatic
   const result = await run(ctx);
   assert.equal(result.type, 'widget');
   const report = ctx.notifications.at(-1).action.text;
-  assert.equal(report.includes('web_rewritten'), true);
+  assert.equal(report.includes('source_found'), true);
   assert.equal(report.includes('native_source_found'), true);
 });
 
 test('YAML and script agree on scoped URL matching and default native inspection', () => {
-  const path = fileURLToPath(new URL('./GoogleApp_Ultra_Web_Egern.yaml', import.meta.url));
-  const ruby = spawnSync('/usr/bin/ruby', ['-r', 'yaml', '-r', 'json', '-e', 'puts JSON.generate(YAML.load_file(ARGV[0]))', path], { encoding: 'utf8' });
-  assert.equal(ruby.status, 0, ruby.stderr);
-  const config = JSON.parse(ruby.stdout);
-  assert.equal(config.env_schema.MODE.default_value, 'rewrite');
-  assert.equal('body_rewrites' in config, false, 'avoid running text replacement twice');
+  const config = configuration();
+  assert.equal('MODE' in config.env_schema, false);
+  assert.equal(config.body_rewrites.length, 2, 'built-in rewrite remains independent of inspection scripts');
   assert.deepEqual(config.mitm.hostnames, ['one.google.com', 'subscriptionsmobile-pa.googleapis.com']);
   const request = config.scriptings.find(x => x.http_request).http_request;
   const responses = config.scriptings.filter(x => x.http_response).map(x => x.http_response);
@@ -227,4 +246,43 @@ test('YAML and script agree on scoped URL matching and default native inspection
     assert.equal(responses.some(r => new RegExp(r.match).test(url)), false, url);
   }
   assert.equal(responses.every(x => x.body_required && x.binary_body && x.max_size === 2097152), true);
+  assert.equal(config.scriptings.every(x => Object.values(x)[0].script_url.endsWith('?v=3')), true);
+});
+
+test('production script uses only the documented default export', () => {
+  assert.equal(/\bexport\s+(?:const|let|var|function|class|\{)/.test(production), false);
+  assert.equal(/\bexport\s+default\s+async\s+function\(ctx\)/.test(production), true);
+});
+
+test('request handling works when browser URL and Headers globals are absent', async () => {
+  const originalURL = globalThis.URL;
+  const originalHeaders = globalThis.Headers;
+  const ctx = context(SOURCE30);
+  try {
+    globalThis.URL = undefined;
+    globalThis.Headers = undefined;
+    assert.equal(endpoint(ctx.request), 'web');
+    assert.equal((await run(ctx)).body, SOURCE30);
+    assert.equal(latest(ctx).web.status, 'source_found');
+  } finally {
+    globalThis.URL = originalURL;
+    globalThis.Headers = originalHeaders;
+  }
+});
+
+test('manual self-test exposes version and notification API failures without a traffic match', async () => {
+  const ctx = context('');
+  delete ctx.request;
+  delete ctx.response;
+  ctx.app = { version: 'EXAMPLE_VERSION' };
+  ctx.notify = undefined;
+  const result = await run(ctx);
+  const text = result.children.map(x => x.text).join('\n');
+  assert.equal(text.includes('诊断3自检运行成功'), true);
+  assert.equal(text.includes('EXAMPLE_VERSION'), true);
+  assert.equal(text.includes('通知调用: 失败'), true);
+});
+
+test('the actual RPC path shown in the phone log is recognized without URL parsing', () => {
+  assert.equal(endpoint({ method: 'POST', url: 'https://subscriptionsmobile-pa.googleapis.com/$rpc/google.internal.subscriptions.mobile.v1.SubscriptionsApiMobileService/GetDynamicStorefrontInfo?' }), 'native');
 });
