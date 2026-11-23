@@ -49,14 +49,14 @@ scriptings:
   - http_request:
       name: 'Ultra 原生30TB 实验4 · 新请求'
       match: '^https://subscriptionsmobile-pa\.googleapis\.com(?::443)?/(?:[^?#]*/)?GetDynamicStorefrontInfo(?:\?[^#]*)?$'
-      script_url: 'https://raw.githubusercontent.com/kawhaiyoung/rule/main/GoogleApp_Ultra_Native30TB_Egern.js'
+      script_url: 'https://raw.githubusercontent.com/kawhaiyoung/rule/59829eb4bec2606ba71065aec86ff8632a9e676e/GoogleApp_Ultra_Native30TB_Egern.js'
       update_interval: 86400
       body_required: false
       timeout: 10
   - http_response:
       name: 'Ultra 原生30TB 实验4 · protobuf'
       match: '^https://subscriptionsmobile-pa\.googleapis\.com(?::443)?/(?:[^?#]*/)?GetDynamicStorefrontInfo(?:\?[^#]*)?$'
-      script_url: 'https://raw.githubusercontent.com/kawhaiyoung/rule/main/GoogleApp_Ultra_Native30TB_Egern.js'
+      script_url: 'https://raw.githubusercontent.com/kawhaiyoung/rule/59829eb4bec2606ba71065aec86ff8632a9e676e/GoogleApp_Ultra_Native30TB_Egern.js'
       update_interval: 86400
       body_required: true
       binary_body: true
@@ -64,7 +64,7 @@ scriptings:
       timeout: 10
   - generic:
       name: 'Ultra 原生30TB 实验4 · 最近报告'
-      script_url: 'https://raw.githubusercontent.com/kawhaiyoung/rule/main/GoogleApp_Ultra_Native30TB_Egern.js'
+      script_url: 'https://raw.githubusercontent.com/kawhaiyoung/rule/59829eb4bec2606ba71065aec86ff8632a9e676e/GoogleApp_Ultra_Native30TB_Egern.js'
       update_interval: 86400
       timeout: 10
 

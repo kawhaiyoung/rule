@@ -21,6 +21,6 @@
     "uncompressed gRPC frame length recomputation",
     "unrelated paths and identifiers preserved",
     "original bytes returned after parse failures or configured non-rewrite conditions"
-  ]
+  ],
+  "script_commit": "59829eb4bec2606ba71065aec86ff8632a9e676e"
 }
-
