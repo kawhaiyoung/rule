@@ -1,0 +1,70 @@
+# Experimental native 30TB rewrite. Requires the newer Egern Script API.
+# Only a complete source SKU at the observed numeric path is changed.
+# No verified Apple price, eligibility or Google Ultra entitlement.
+name: 'Google App Ultra 原生30TB改写（实验4）'
+description: '网页保留原有规则；原生protobuf仅在已观察路径中精确替换完整30TB编号并重算长度。通知显示匹配及实际替换数；未验证Apple报价和Ultra权益。'
+author: 'Codex'
+homepage: 'https://github.com/kawhaiyoung/rule'
+manual: 'https://github.com/kawhaiyoung/rule/blob/main/GoogleApp_Ultra_Native30TB_README.md'
+icon: 'arrow.triangle.2.circlepath'
+env_schema:
+  MODE:
+    name: '原生处理模式'
+    description: 'rewrite尝试替换；inspect只检查并保留原始正文。'
+    default_value: 'rewrite'
+    options:
+      - 'rewrite'
+      - 'inspect'
+  FIELD_PATHS:
+    name: '已观察到的数字字段路径'
+    description: '留空使用脚本内的已观察路径；只在这些路径匹配完整源编号。多个路径用英文逗号分隔。'
+    default_value: '1.11.1.11.1.18.1.2.20.1.11.1.11.1.11.1.13.1.11.1.12.1.3.4.9.4.1.2.2.1'
+  NOTIFY:
+    name: '原生处理结果通知'
+    default_value: 'true'
+    options:
+      - 'true'
+      - 'false'
+mitm:
+  hostnames:
+    - 'one.google.com'
+    - 'subscriptionsmobile-pa.googleapis.com'
+http_captures:
+  - 'one.google.com'
+  - 'subscriptionsmobile-pa.googleapis.com'
+
+# Existing web rules are independent of the experimental native script.
+body_rewrites:
+  - response_regex:
+      match: '^https://one\.google\.com(?::443)?/ai/?(?:\?[^#]*)?$'
+      find: '20tb\.m\.v2'
+      replace: '20tb.m'
+      disabled: false
+  - response_regex:
+      match: '^https://one\.google\.com(?::443)?/ai/?(?:\?[^#]*)?$'
+      find: '30tb\.ai\.pro\.m'
+      replace: '30tb.m'
+      disabled: false
+scriptings:
+  - http_request:
+      name: 'Ultra 原生30TB 实验4 · 新请求'
+      match: '^https://subscriptionsmobile-pa\.googleapis\.com(?::443)?/(?:[^?#]*/)?GetDynamicStorefrontInfo(?:\?[^#]*)?$'
+      script_url: 'https://raw.githubusercontent.com/kawhaiyoung/rule/main/GoogleApp_Ultra_Native30TB_Egern.js'
+      update_interval: 86400
+      body_required: false
+      timeout: 10
+  - http_response:
+      name: 'Ultra 原生30TB 实验4 · protobuf'
+      match: '^https://subscriptionsmobile-pa\.googleapis\.com(?::443)?/(?:[^?#]*/)?GetDynamicStorefrontInfo(?:\?[^#]*)?$'
+      script_url: 'https://raw.githubusercontent.com/kawhaiyoung/rule/main/GoogleApp_Ultra_Native30TB_Egern.js'
+      update_interval: 86400
+      body_required: true
+      binary_body: true
+      max_size: 2097152
+      timeout: 10
+  - generic:
+      name: 'Ultra 原生30TB 实验4 · 最近报告'
+      script_url: 'https://raw.githubusercontent.com/kawhaiyoung/rule/main/GoogleApp_Ultra_Native30TB_Egern.js'
+      update_interval: 86400
+      timeout: 10
+
