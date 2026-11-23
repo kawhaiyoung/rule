@@ -47,14 +47,14 @@ scriptings:
   - http_request:
       name: 'Google App Ultra 诊断3 · 新请求'
       match: '^https://(?:one\.google\.com(?::443)?/ai/?(?:\?[^#]*)?|subscriptionsmobile-pa\.googleapis\.com(?::443)?/(?:[^?#]*/)?GetDynamicStorefrontInfo(?:\?[^#]*)?)$'
-      script_url: 'https://raw.githubusercontent.com/kawhaiyoung/rule/main/GoogleApp_Ultra_Web_Egern.js?v=3'
+      script_url: 'https://raw.githubusercontent.com/kawhaiyoung/rule/19d7b1b261d8aaf7ed40a831d3446f0d8b30f0ff/GoogleApp_Ultra_Web_Egern.js'
       update_interval: 300
       body_required: false
       timeout: 10
   - http_response:
       name: 'Google App Ultra 诊断3 · 网页'
       match: '^https://one\.google\.com(?::443)?/ai/?(?:\?[^#]*)?$'
-      script_url: 'https://raw.githubusercontent.com/kawhaiyoung/rule/main/GoogleApp_Ultra_Web_Egern.js?v=3'
+      script_url: 'https://raw.githubusercontent.com/kawhaiyoung/rule/19d7b1b261d8aaf7ed40a831d3446f0d8b30f0ff/GoogleApp_Ultra_Web_Egern.js'
       update_interval: 300
       body_required: true
       binary_body: true
@@ -63,7 +63,7 @@ scriptings:
   - http_response:
       name: 'Google App Ultra 诊断3 · 原生只检查'
       match: '^https://subscriptionsmobile-pa\.googleapis\.com(?::443)?/(?:[^?#]*/)?GetDynamicStorefrontInfo(?:\?[^#]*)?$'
-      script_url: 'https://raw.githubusercontent.com/kawhaiyoung/rule/main/GoogleApp_Ultra_Web_Egern.js?v=3'
+      script_url: 'https://raw.githubusercontent.com/kawhaiyoung/rule/19d7b1b261d8aaf7ed40a831d3446f0d8b30f0ff/GoogleApp_Ultra_Web_Egern.js'
       update_interval: 300
       body_required: true
       binary_body: true
@@ -71,7 +71,7 @@ scriptings:
       timeout: 10
   - generic:
       name: 'Google App Ultra 诊断3 · 最近报告'
-      script_url: 'https://raw.githubusercontent.com/kawhaiyoung/rule/main/GoogleApp_Ultra_Web_Egern.js?v=3'
+      script_url: 'https://raw.githubusercontent.com/kawhaiyoung/rule/19d7b1b261d8aaf7ed40a831d3446f0d8b30f0ff/GoogleApp_Ultra_Web_Egern.js'
       update_interval: 300
       timeout: 10
 

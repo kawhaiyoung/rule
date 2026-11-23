@@ -24,7 +24,8 @@
     "Only documented default export in shipped JavaScript",
     "No browser URL or Headers global dependency",
     "Bounded console diagnostics for entry, API availability and results",
-    "All diagnostic response bodies preserved"
+    "All diagnostic response bodies preserved",
+    "Pin all script URLs to the verified immutable commit after detecting stale main-branch Raw cache"
   ],
   "native_rewriting": false,
   "not_verified": [
@@ -33,6 +34,6 @@
     "Existing-member discounted upgrade",
     "Apple price or SKU availability",
     "Google Ultra entitlement"
-  ]
+  ],
+  "script_commit": "19d7b1b261d8aaf7ed40a831d3446f0d8b30f0ff"
 }
-

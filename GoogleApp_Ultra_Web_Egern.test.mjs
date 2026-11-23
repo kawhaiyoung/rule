@@ -246,7 +246,9 @@ test('YAML and script agree on scoped URL matching and default native inspection
     assert.equal(responses.some(r => new RegExp(r.match).test(url)), false, url);
   }
   assert.equal(responses.every(x => x.body_required && x.binary_body && x.max_size === 2097152), true);
-  assert.equal(config.scriptings.every(x => Object.values(x)[0].script_url.endsWith('?v=3')), true);
+  const scriptUrls = config.scriptings.map(x => Object.values(x)[0].script_url);
+  assert.equal(new Set(scriptUrls).size, 1);
+  assert.equal(scriptUrls.every(x => /^https:\/\/raw\.githubusercontent\.com\/kawhaiyoung\/rule\/[0-9a-f]{40}\/GoogleApp_Ultra_Web_Egern\.js$/.test(x)), true);
 });
 
 test('production script uses only the documented default export', () => {
