@@ -6,12 +6,42 @@
 
 | 模块 | 响应范围 | 默认行为 |
 | --- | --- | --- |
-| [Google App 教程对照模块](https://raw.githubusercontent.com/kawhaiyoung/rule/main/GoogleApp_Ultra_Web_Egern.yaml) | `https://one.google.com/ai` 及其查询参数；按教程在彩色G图标的 Google 搜索 App 中使用 | 20TB、30TB文本规则均开启；没有原生脚本诊断通知 |
+| [Google App 教程对照模块，诊断2](https://raw.githubusercontent.com/kawhaiyoung/rule/main/GoogleApp_Ultra_Web_Egern.yaml) | `one.google.com/ai` 网页及 `GetDynamicStorefrontInfo` 原生套餐接口；从彩色G图标的 Google 搜索 App 进入 | 网页沿用20TB、30TB片段映射；原生只检查；通知可复制报告 |
 | [原有网页版模块](https://raw.githubusercontent.com/kawhaiyoung/rule/main/GoogleOne_TR_Ultra_Egern.yaml) | `https://one.google.com/ai` 及其查询参数 | 文本替换，30TB 规则开启，20TB 备用规则关闭 |
 | [原生 20TB 实验模块](https://raw.githubusercontent.com/kawhaiyoung/rule/main/GoogleOne_Native_20TB_Egern.yaml) | 截图中的 `subscriptionsmobile-pa.googleapis.com`，路径以 `/GetDynamicStorefrontInfo` 结尾的 POST 响应 | `inspect` 检查模式，返回原响应字节 |
 | [旧20TB商品查询测试](https://raw.githubusercontent.com/kawhaiyoung/rule/main/GoogleOne_Legacy20TB_Probe_Egern.yaml) | 同一原生接口，固定使用 `g1.ios.100gb.m` 作为来源 | 默认 `inspect`；需明确切换 `rewrite` 才会让 100GB 月付入口尝试查询旧20TB商品 |
 
 原生模块会下载[配套 JavaScript](https://raw.githubusercontent.com/kawhaiyoung/rule/main/GoogleOne_Native_20TB_Egern.js)。它使用 Egern 官方原生脚本 API，要求当前版本支持 `export default async function(ctx)`、`binary_body` 和 `arrayBuffer()`。本次没有推断或添加原生 30TB 映射。
+
+## 2026-11-23：Google App 模块诊断2
+
+现有远程订阅地址保持不变，包括地址上的 `?web-tutorial=1` 参数。更新后，模块会下载[配套脚本](https://raw.githubusercontent.com/kawhaiyoung/rule/main/GoogleApp_Ultra_Web_Egern.js?v=2)，不再同时运行内置文本重写。脚本仅在网页响应中保留教程的两组片段替换，支持原有查询参数，也接受不带查询参数和末尾带斜线的 `/ai` 页面。
+
+已通过 Apple 订阅的账号，升级入口可能回到原订阅 App 或 Apple 订阅设置。缺少“查看所有方案”、Google 页面显示原价，都不能单独证明 Apple 会按原价结算。模块也不能在 Apple 订阅界面生成缺失的按钮。[Google 的升级流程说明](https://support.google.com/googleone/answer/16476748?co=GENIE.Platform%3DiOS&hl=zh-Hans)
+
+更新与检查：
+
+1. 手动刷新当前远程模块，保持网页模式为 `rewrite`，停用其他 Google One 商品改写模块。重新连接 Egern，完全退出并重新打开原来订阅所用的 Google App。
+2. 进入 Google One 的 Ultra 升级入口。仅查看 Apple 确认面板中的所属 App、商品、币种、金额和周期；Google 页面的价格文字不会由本脚本改动。
+3. 如果跳回订阅管理且没有可选方案，查看“Google App Ultra · 诊断2”通知，点击复制报告。也可在 Egern 的脚本列表运行“Google App Ultra 诊断2 · 最近报告”，再次显示最近网页和原生状态。
+4. 保留这次是否成功调起 Apple 面板、从哪个 App 进入的信息，用于与报告对照。没有实际请求前，不能认定升级使用了哪条接口。
+
+| 状态 | 本地能确认的内容 |
+| --- | --- |
+| `web_rewritten` | 网页响应中的源片段已替换；不证明 Apple 已返回旧商品或授予权益 |
+| `source_found` | 找到网页/JSON中的源片段，当前为只检查模式 |
+| `native_source_found` | 原生 protobuf 中找到完整值候选；原始响应未改写，字段语义尚未验证 |
+| `legacy_sku_present` | 可识别的完整候选中含旧格式编号；不证明该编号就是此次下单商品 |
+| `no_source_sku` | 此次可检查内容未找到源片段；不代表商品下架或账号永久失去资格 |
+| `http_not_2xx` | HTTP 响应是重定向、缓存状态或错误等非2xx状态，正文未改动 |
+| `unsupported_content_type` / `unsupported_charset` | 不支持的内容类型或文本编码，原样通过 |
+| `encoded_response_passthrough` | 响应仍带压缩编码，本脚本不处理 |
+| `parse_failed_passthrough` / `limit_passthrough` | 解析失败或超过限制；已读取的原始正文会返回给 App |
+| “本脚本尚无记录” | 尚未保存对应接口的状态；应检查模块是否已更新、请求是否经过 Egern、证书和传输方式 |
+
+原生检查限定在既有截图中的 `subscriptionsmobile-pa.googleapis.com/.../GetDynamicStorefrontInfo`，仅记录最多64个去重的商品样式字符串和数字字段路径，始终返回原始响应。没有 .proto 和真实请求对应关系时，不按猜测改写原生商品、会员资格或收据。该检查与旧的20TB实验改写脚本不同。
+
+脚本只把最近的两类状态保存在本机 Egern 中，不自动发送报告。Egern HTTP 抓包是独立功能，其完整记录可能包含账户数据，不能当作脱敏报告直接公开。检查结束后可停用模块。代码与[20项离线检查](https://raw.githubusercontent.com/kawhaiyoung/rule/main/GoogleApp_Ultra_Web_Egern.test.mjs)已公开；离线结果不能替代手机上的报价和权益验证。
 
 ## NodeSeek教程对照与入口修正
 
@@ -27,17 +57,17 @@
 这里的 Google App 指[Google 搜索应用](https://apps.apple.com/tr/app/google/id284815942)。教程截图中的 Google App 购买流程，与原生探针借用 Google One 的100GB入口查询固定旧商品编号，是两种实验；不能因为容量相同就视为同一笔商品和权益。
 
 1. 取消尚未完成的测试购买面板，停用100GB查询模块和其他 Google One SKU 模块。
-2. 在 Egern 中导入并启用“Google App Ultra 网页 SKU 改写（教程对照）”，沿用已安装、受信任的 Egern 证书。
+2. 在 Egern 中导入或手动更新“Google App Ultra 网页 SKU 改写（诊断2）”，沿用已安装、受信任的 Egern 证书。网页模式默认 `rewrite`；原生接口始终只检查。
 3. 先核对账号是否符合作者声称的“新订阅”条件，不要为了建立入口而购买 Lite 或100GB等其他方案。
 4. 在彩色G图标的 Google App 中，按教程进入设置中的 Google One 订阅入口，再选择 Ultra 方案。实际菜单可能随版本和账号状态变化，以手机界面为准。
-5. 在 Egern HTTP 抓包中核对是否产生 `one.google.com/ai` 请求，以及实际响应中是否存在相应源片段。本模块使用 Egern 内置文本重写，不会弹出 `candidate_found` 或 `rewritten` 通知；抓包视图若显示原始响应，也不能仅凭原字符串仍在就判定改写失败。
+5. 查看“Google App Ultra · 诊断2”通知。`web_rewritten` 表示脚本已构造替换后的网页响应，通知显示实际替换次数；它不证明 App 已采用该商品。抓包视图可能展示原始响应，因此不能只凭原字符串仍在就判定脚本失败。
 6. 只查看苹果购买面板，核对所属 App、商品、币种、金额和周期，然后取消。页面价签和苹果报价可能不同，二者都不能证明 Google 后端已授予 Ultra。
 
 模块按主机和URL匹配，不能识别请求由哪个 App 发起；访问同一URL的其他客户端也可能受到规则影响。检查结束后停用模块。
 
 证据范围：帖子提供了改写配置和苹果购买面板，[回复中有人自述成功](https://www.nodeseek.com/post-1070216-1#10)。所查看的截图没有展示购买完成后的 Google Ultra 会员状态，也没有提供具体旧SKU与Ultra权益的官方对应关系。因此，这篇教程不足以确认100GB探针所查询的旧20TB商品一定包含Ultra，也不足以保证新的 Google App 流程能够长期保留权益。
 
-Google App模块仅完成 YAML、URL边界和合成文本替换的离线检查，尚未在手机的 Google App 中实测。原生脚本的37项检查不代表这条网页流程已经通过手机验证。
+Google App诊断2通过20项离线检查，覆盖网页SKU边界、价签保留、原生响应原样返回、protobuf/gRPC检查、流读取后的失败透传、诊断数据范围及YAML匹配范围。尚未在手机的 Google App 中实测；测试中的 Egern API 使用替身。其他原生20TB脚本的37项检查与本版本分开。
 
 ## 通过100GB月付入口测试旧20TB商品
 
@@ -137,3 +167,4 @@ modules:
 将[测试脚本](https://raw.githubusercontent.com/kawhaiyoung/rule/main/GoogleOne_Native_20TB.test.mjs)与配套 JavaScript 放在同一目录，可用 `node --test GoogleOne_Native_20TB.test.mjs` 复查；[验证记录](https://raw.githubusercontent.com/kawhaiyoung/rule/main/GoogleOne_Egern_validation.json)列出了检查范围。
 
 官方配置依据：[模块与环境变量](https://egernapp.com/zh-CN/docs/configuration/modules/)、[二进制脚本配置](https://egernapp.com/zh-CN/docs/configuration/scriptings/)、[原生 JavaScript API](https://egernapp.com/zh-CN/docs/javascript-api/)。原网页版规则来源为[用户最初提供的帖子](https://linux.do/t/topic/3216273)。
+

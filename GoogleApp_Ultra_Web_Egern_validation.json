@@ -1,0 +1,24 @@
+{
+  "diagnostic_version": 2,
+  "date": "2026-11-23",
+  "test_command": "node --test --test-reporter=spec work/GoogleApp_Ultra_Web_Egern.test.mjs",
+  "tests": 20,
+  "passed": 20,
+  "failed": 0,
+  "scope": [
+    "YAML parsing and scoped URL matching",
+    "existing 20TB and 30TB web mappings; price labels unchanged",
+    "native protobuf and gRPC inspection only; original bytes preserved",
+    "malformed payloads, field/depth/size limits, stream-safe pass-through",
+    "bounded reports exclude full responses, query strings, credentials and receipts"
+  ],
+  "not_verified": [
+    "iPhone Egern runtime",
+    "actual existing-member upgrade request path",
+    "Apple SKU availability or TRY price",
+    "purchase completion",
+    "Google Ultra entitlement"
+  ],
+  "native_rewriting": false
+}
+
