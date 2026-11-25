@@ -1,0 +1,106 @@
+# Independent ACQ experiment. Do not enable together with experiment4.
+# The old experiment4 files and fixed-version links are preserved.
+name: 'G1 ACQ Egern · 一折与试用'
+description: '网页20TB/30TB促销映射、被动SKU采集与本地报告；原生30TB沿用实验4已观察字段路径。仅测试商品入口，优惠资格、报价、旧订阅退款和权益未验证。'
+author: 'Codex'
+homepage: 'https://github.com/crhywun/g1-acq'
+manual: 'https://github.com/kawhaiyoung/rule/blob/main/G1_ACQ_Egern_README.md'
+open_url: 'https://one.google.com/g1-egern-report'
+icon: 'arrow.triangle.2.circlepath'
+env_schema:
+  OFFER_MODE:
+    name: '优惠模式'
+    description: 'discount：Ultra三个月一折候选；trial：Ultra一个月试用候选。实际资格以Apple为准。'
+    default_value: 'discount'
+    options:
+      - 'discount'
+      - 'trial'
+  ACTION:
+    name: '处理方式'
+    description: 'rewrite尝试改写；inspect只采集检查并返回原正文。'
+    default_value: 'rewrite'
+    options:
+      - 'rewrite'
+      - 'inspect'
+  NATIVE_30TB:
+    name: '处理原生30TB入口'
+    description: '开启时只在下面数字路径匹配完整g1.ios.30tb.ai.pro.m。原生20TB及2TB不改写。'
+    default_value: 'true'
+    options:
+      - 'true'
+      - 'false'
+  NATIVE_PATHS:
+    name: '原生30TB字段路径'
+    description: '留空沿用实验4已观察路径；不使用通配符。多个路径用英文逗号分隔。'
+    default_value: '1.11.1.11.1.18.1.2.20.1.11.1.11.1.11.1.13.1.11.1.12.1.3.4.9.4.1.2.2.1'
+  PRO_2TB:
+    name: '额外测试网页2TB候选'
+    description: '默认关闭。开启后把g1.ios.2tb.前缀映射到12months优惠候选，未验证计费周期和权益。'
+    default_value: 'false'
+    options:
+      - 'true'
+      - 'false'
+  NOTIFY:
+    name: '结果通知'
+    default_value: 'true'
+    options:
+      - 'true'
+      - 'false'
+mitm:
+  hostnames:
+    - 'one.google.com'
+    - 'subscriptionsmobile-pa.googleapis.com'
+
+# Limit UDP/443 blocking to the two intercepted hosts, rather than every app.
+rules:
+  - and:
+      match:
+        - protocol:
+            match: 'udp'
+        - dest_port:
+            match: '443'
+        - or:
+            match:
+              - domain:
+                  match: 'one.google.com'
+              - domain:
+                  match: 'subscriptionsmobile-pa.googleapis.com'
+      policy: REJECT
+scriptings:
+  - http_request:
+      name: 'G1 ACQ Egern · 本地报告'
+      match: '^https://one\.google\.com(?::443)?/g1-egern-report/?(?:\?[^#]*)?$'
+      script_url: 'https://raw.githubusercontent.com/kawhaiyoung/rule/9d2933db565e8c4890feb850ee4ae095a9286ff5/G1_ACQ_Egern.js'
+      body_required: false
+      timeout: 10
+      update_interval: 86400
+  - http_request:
+      name: 'G1 ACQ Egern · 新请求'
+      match: '^https://(?:one\.google\.com(?::443)?/ai/?(?:\?[^#]*)?|subscriptionsmobile-pa\.googleapis\.com(?::443)?/(?:[^?#]*/)?GetDynamicStorefrontInfo(?:\?[^#]*)?)$'
+      script_url: 'https://raw.githubusercontent.com/kawhaiyoung/rule/9d2933db565e8c4890feb850ee4ae095a9286ff5/G1_ACQ_Egern.js'
+      body_required: false
+      timeout: 10
+      update_interval: 86400
+  - http_response:
+      name: 'G1 ACQ Egern · 网页采集与改写'
+      match: '^https://one\.google\.com(?::443)?/'
+      script_url: 'https://raw.githubusercontent.com/kawhaiyoung/rule/9d2933db565e8c4890feb850ee4ae095a9286ff5/G1_ACQ_Egern.js'
+      body_required: true
+      binary_body: true
+      max_size: 2097152
+      timeout: 10
+      update_interval: 86400
+  - http_response:
+      name: 'G1 ACQ Egern · 原生30TB'
+      match: '^https://subscriptionsmobile-pa\.googleapis\.com(?::443)?/(?:[^?#]*/)?GetDynamicStorefrontInfo(?:\?[^#]*)?$'
+      script_url: 'https://raw.githubusercontent.com/kawhaiyoung/rule/9d2933db565e8c4890feb850ee4ae095a9286ff5/G1_ACQ_Egern.js'
+      body_required: true
+      binary_body: true
+      max_size: 2097152
+      timeout: 10
+      update_interval: 86400
+  - generic:
+      name: 'G1 ACQ Egern · 最近报告'
+      script_url: 'https://raw.githubusercontent.com/kawhaiyoung/rule/9d2933db565e8c4890feb850ee4ae095a9286ff5/G1_ACQ_Egern.js'
+      timeout: 10
+      update_interval: 86400
